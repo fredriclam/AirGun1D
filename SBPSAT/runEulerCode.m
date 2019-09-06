@@ -18,7 +18,7 @@ function sol = runEulerCode(nx,airgunPressure,airgunLength,airgunPortArea,airgun
     end
 
     y0 = [bubble0; q0];
-    tspan = [0; 2];
+    tspan = [0; 2]; % Simulation tmin to tmax (specify here)
     options = odeset('RelTol',1e-6);
     
     sol = ode45(@odefun, tspan, y0,options);
