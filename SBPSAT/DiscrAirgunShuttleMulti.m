@@ -104,8 +104,8 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                 % Capture flow state in PDE domain
                 flowState = schm.flowStateR(q);
                 if flowState == scheme.Euler1d.SUBSONIC_INFLOW
-                    warning(['Inflow @ t = ' num2str(t) ...
-                        '; u|x=0 = ' num2str(u_R)]);
+%                     warning(['Inflow @ t = ' num2str(t) ...
+%                         '; u|x=0 = ' num2str(u_R)]);
                 elseif flowState == scheme.Euler1d.SUPERSONIC_OUTFLOW
                     isSonicFlags(1) = true;
                 end
@@ -157,7 +157,7 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                     % flow is not consistent; switch to subsonic
                     % TODO: check code for subsonic case
                     if p_R < pBubble
-                        error('p_R < pBubble. Should do subsonic flow');
+                        warning(['p_R < pBubble. Should do subsonic flow; t = ' num2str(t)]);
                         
                         % Inverse problem for finding subsonic mach number at port
                         obj_func = @(M_port) APortExposed / ...

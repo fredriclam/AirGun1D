@@ -23,7 +23,9 @@ switch str
 %         V = V_imperial * 1.63871e-5; % air gun volume [m^3]
 
         % Rewriting airgun geometry section
-        crossSectionalAreaImperial = 12.5; % [in^2] (case in Watson long paper) 
+        % Port area input is currently the cross-sectional area rather than
+        % the max area of the circumferential port
+        crossSectionalAreaImperial = airgunPortArea; % Was manually 12.5; % [in^2] (case in Watson long paper) 
         airgunLengthImperial = airgunLength/0.0254; % [in] driven by airgunLength
         V_imperial = crossSectionalAreaImperial * airgunLengthImperial; % [cui]
         V = V_imperial * 1.63871e-5; % air gun volume [m^3]
@@ -49,7 +51,7 @@ switch str
         
         %% Fixed open-time model
         % Time when air gun stops firing [s]
-        physConst.AirgunCutoffTime = 0.010;
+        physConst.AirgunCutoffTime = 0.04; % Should be 0.010, but specified as 0.04 in airgun1d/HEAD
         
         % Air gun
         p = physConst.p0a;
@@ -75,7 +77,12 @@ switch str
         % Make the widely-used V_bubble = V_airgun assumption
         %V_airgun_const = 250 * 1.63871e-5;
 %         V_airgun_const = 600 * 1.63871e-5;
+
+        % HACK: Overwrites current V with fixed prescribed volume as in
+        % airgun1d/HEAD
+        V = 600 * 1.63871e-5; 
         VBubbleInitial = V; % Equal to airgun volume [m^3]
+        
         icBubble.R = (3/(4*pi) * VBubbleInitial)^(1/3);
         icBubble.Rdot = 0;
         icBubble.m = p*VBubbleInitial / (Q*T); 
@@ -105,7 +112,7 @@ switch str
 %         physConst.shuttle_area_right = 0.8*crossSectionalArea; % [m^2]
 
         % Local numerical parameters
-        physConst.shuttleBdryPenaltyStrength = 1e7; % [ ... ]
+        physConst.shuttleBdryPenaltyStrength = 1e11; % 1e7; % [ ... ]
 
     otherwise
         error();

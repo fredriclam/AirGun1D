@@ -17,4 +17,5 @@ dz = [...(z(1) >= 0) * ... % This line disables motion when to the left
       z(2);
       1/physConst.shuttleAssemblyMass ...
       * (p_L*A_L - p_R*A_R + penaltyForce ...
-      - 1e-3 * z(2))]; % arbitrary linear damping
+      - 0 * 1e3 * z(2) )];
+      ...- 1e-1 * z(2) * abs(z(1) < 0))]; % arbitrary linear damping

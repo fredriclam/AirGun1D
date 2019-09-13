@@ -18,9 +18,15 @@ rho_inf = 1000; % Density of water [kg/m^3]
 % T_inf = 288; % temperature assumed constant throughout the system [K]
 
 aP = 2000; % air gun pressure for slope/rise time plot [psi]
-aL = 1.2; % originally 0.6; % air gun length [m]
-aA = 12.5; % originally 16; % air gun port area [in^2] % cross-sectional area = port area
+aL = 0.6; % 1.2; % originally 0.6; % air gun length [m]
+aA = 16; % 12.5; % originally 16; % air gun port area [in^2] % cross-sectional area = port area
 aD = 7.5; % originally 7.5; % air gun depth [m]
+
+% % % % Second set
+% % % aP = 1000; % psi
+% % % aL = 6; % m, approx
+% % % aA = 87; % in^2, approx
+% % % aD = 10; % m
 
 % run solve
 [sol, q, bubble, shuttle, ...
@@ -205,6 +211,13 @@ end
 % h = text(1.1, 0.7, 'time');
 % set(h,'FontSize',24);
 
+%% Temperature tracking
+c_v = 718;
+T =((q(3:3:end,:) - 0.5 * rho .* u.^2)/c_v);
+T2 =((q2(3:3:end,:) - 0.5 * q2(1:3:end,:) .* u2.^2)/c_v);
+
+
+%% Console report
 disp('Driver OK')
 
 %% Pressure pulse
