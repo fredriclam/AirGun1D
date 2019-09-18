@@ -6,7 +6,7 @@ function dy = bubbleRHS(y, rho_a, v_a, e_a, p_a, A, physConst)
     m    = y(3);
     E    = y(4);
 
-    R_G     = physConst.R_G;
+    Q       = physConst.Q;
     c_v     = physConst.c_v;
     p_inf   = physConst.p_inf;
     rho_inf = physConst.rho_inf;

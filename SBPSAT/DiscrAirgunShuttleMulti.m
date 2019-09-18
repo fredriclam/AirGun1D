@@ -1,20 +1,41 @@
 classdef DiscrAirgunShuttleMulti < DiscrAirgun
     properties
         shuttle0           % Initial shuttle state [pos; vel]
-        opChamberPressure0 % Initial pressure in op chamber
+        machAreaFunction   % Precomputed M(A/A*) function interpolant
     end
     
     methods
         function obj = DiscrAirgunShuttleMulti(m,order,airgunPressure,...
                 airgunLength,airgunPortArea,...
-                airgunDepth, REVERT_MODEL)
-            % Meta flags
-% %             REVERT_MODEL = true; % Skips port area, reverting to LW model
+                airgunDepth, airgunCrossSectionalArea, REVERT_MODEL, ...
+                airgunFiringChamberProfile, ...
+                airgunOperatingChamberProfile, bubbleInitialVolume, ...
+                shuttleBdryPenaltyStrength)
+            if nargin == 8 && ~REVERT_MODEL
+                error('Incorrect # of arguments for unreverted model.')
+            end
             
             % Call parent constructor
             obj = obj@DiscrAirgun(m,order,airgunPressure,...
                 airgunLength,airgunPortArea,...
                 airgunDepth);
+            if ~REVERT_MODEL
+                % Override the configuration with updated, backward-compatible
+                % setting
+                [physConst, t0, icAirgun, icBubble] = ...
+                    configAirgun('GeneralAirgun', ...
+                        airgunPressure, ...
+                        airgunLength, ...
+                        airgunPortArea, ...
+                        airgunDepth, ...
+                        airgunCrossSectionalArea, ...
+                        airgunFiringChamberProfile, ...
+                        airgunOperatingChamberProfile, ...
+                        bubbleInitialVolume, ...
+                        shuttleBdryPenaltyStrength);
+                obj.physConst = physConst;
+            end
+            
             % Alias commonly used objects
             physConst = obj.physConst;
             schm = obj.schm;
@@ -28,8 +49,8 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
             % TODO: check sensitivity
             % TODO: incorporate initial volume encompassed by shuttle but
             % not relevant to the port area calculation
-            obj.shuttle0 = [1e-6;
-                            0];
+            obj.shuttle0 = [1e-3;
+                            0]; %[m]
 
             % Set initial port region state: [p; rho; T]
             % from the initial airgun state
@@ -52,18 +73,23 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
             % Wall on the right
             closure_r_closed = schm.boundary_condition('r', 'wall');
             
-            % Isentropic steady-flow thermodynamic ratios:
-            % Ratio p/p0 (p at M to stagnation pressure)
-            pressure_ratio = @(M) (1 + 0.5*(gamma_-1)* M .^2 ).^ ...
-                (-gamma_/(gamma_-1));
-            % Ratio T/T0 (T at M to stagnation temperature)
-            temperature_ratio = @(M) 1./ (1 + 0.5*(gamma_-1)* M .^2 );
-            % A/A* as function of Mach number
-            area_ratio = @(M) ...
-                ((gamma_+1)/2)^(-(gamma_+1)/2/(gamma_-1)) * ...
-                (1 + (gamma_-1)/2 * M.^2 ).^ ...
-                ((gamma_+1)/2/(gamma_-1)) ...
-                ./ M;
+%             % Isentropic steady-flow thermodynamic ratios:
+%             % Ratio p/p0 (p at M to stagnation pressure)
+%             pressure_ratio = @(M) (1 + 0.5*(gamma_-1)* M .^2 ).^ ...
+%                 (-gamma_/(gamma_-1));
+%             % Ratio T/T0 (T at M to stagnation temperature)
+%             temperature_ratio = @(M) 1./ (1 + 0.5*(gamma_-1)* M .^2 );
+%             % A/A* as function of Mach number
+%             area_ratio = @(M) ...
+%                 ((gamma_+1)/2)^(-(gamma_+1)/2/(gamma_-1)) * ...
+%                 (1 + (gamma_-1)/2 * M.^2 ).^ ...
+%                 ((gamma_+1)/2/(gamma_-1)) ...
+%                 ./ M;
+
+            % Precompute mach area function M(A/A*)
+            if ~REVERT_MODEL
+                obj.machAreaFunction = precomputeMachAreaFunction(gamma_);
+            end
             
             %% Redefine RHS to include evolution of shuttle and port-region
             function [dq, dBubble, dShuttle,miscStates] = ...
@@ -96,7 +122,7 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                     % the shuttle: the % of the travel is thus the % of the
                     % full port area that is exposed
                     APortExposed = physConst.APortTotal * ...
-                        (posShuttle / physConst.operating_chamber_length);
+                        (posShuttle / physConst.operatingChamberLength);
                 end
 
                 % Initialize local flags for sonic/subsonic this timestep
@@ -109,18 +135,18 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                 elseif flowState == scheme.Euler1d.SUPERSONIC_OUTFLOW
                     isSonicFlags(1) = true;
                 end
-                
-                % Compute ratio of chamber cross-sectional area to sonic
-                % area of the flow for control
-                A_on_Asonic_ratio = ...
-                    ((gamma_+1)/2)^(-(gamma_+1)/2/(gamma_-1)) * ...
-                    (1 + (gamma_-1)/2*M_R^2 )^((gamma_+1)/2/(gamma_-1)) ...
-                    ./ M_R;
-                % Compute sonic area of flow
-                A_sonic = physConst.cross_sectional_area / ...
-                    A_on_Asonic_ratio;
-                % Compute sonic area ratio at the port
-                APortOnASonic = APortExposed/A_sonic;
+%                 
+%                 % Compute ratio of chamber cross-sectional area to sonic
+%                 % area of the flow for control
+%                 A_on_Asonic_ratio = ...
+%                     ((gamma_+1)/2)^(-(gamma_+1)/2/(gamma_-1)) * ...
+%                     (1 + (gamma_-1)/2*M_R^2 )^((gamma_+1)/2/(gamma_-1)) ...
+%                     ./ M_R;
+%                 % Compute sonic area of flow
+%                 A_sonic = physConst.cross_sectional_area / ...
+%                     A_on_Asonic_ratio;
+%                 % Compute sonic area ratio at the port
+%                 APortOnASonic = APortExposed/A_sonic;
                 
                 if REVERT_MODEL
                     if t <= physConst.AirgunCutoffTime
@@ -142,13 +168,9 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                         vel_a = 0;
                     else
                         % Compute upstream mach number (set M_a as
-                        % boundary condition)
-                        M_a = fzero( @(M) ...
-                            ((gamma_+1)/2)^(-(gamma_+1)/2/(gamma_-1)) * ...
-                            (1 + (gamma_-1)/2 * M^2 )^ ...
-                            ((gamma_+1)/2/(gamma_-1)) ./ M - ...
-                            physConst.cross_sectional_area/A_sonic, ...
-                            [1e-10,1-1e-10]);
+                        % boundary condition) using precompute
+                        M_a = obj.machAreaFunction(...
+                            physConst.crossSectionalArea / A_sonic);
                         % TODO: try using just velocity BC as a substitute
                         vel_a = M_a * c_R;
                     end
@@ -204,15 +226,17 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                     
                     % Compute choked properties at port
                     % TODO: check significance of these ratios
-                    pPort = pressure_ratio(1) / pressure_ratio(M_R) * p_R;
-                    TPort = temperature_ratio(1) / temperature_ratio(M_R) * T_R;
+                    pPort = pressureMachFunction(gamma_, 1) / ...
+                        pressureMachFunction(gamma_, M_R) * p_R;
+                    TPort = temperatureMachFunction(gamma_, 1) / ...
+                        temperatureMachFunction(gamma_, M_R) * T_R;
                     rhoPort = pPort / physConst.Q / TPort;
                     cPort = sqrt(physConst.gamma * physConst.Q * ...
                         TPort);
                     massFlowPort = rhoPort * cPort * APortExposed;
                     
                     % Sanity check
-                    assert(TPort > 0 && pPort > 0 && rhoPort >0 && ...
+                    assert(TPort > 0 && pPort > 0 && rhoPort > 0 && ...
                         cPort > 0 && isreal(cPort))
                 end
 
@@ -235,14 +259,18 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
 %                 str = str + " | UPORT*: " + sprintf("%.4e", uPortGuess);
                 str = str + ...
                     " | MdotPORT: " + sprintf("%.4e", massFlowPort);
-                str = str + ...
-                    " | APORT/A*: " + sprintf("%.4e", APortOnASonic);
+%                 str = str + ...
+%                     " | APORT/A*: " + sprintf("%.4e", APortOnASonic);
 %                 fprintf(str + "\n");
                 
                 %% Shuttle (and operating chamber) dynamics
                 % Compute shuttle state evolution
                 % Early data: should be initial ~80g accel
-                dShuttle = shuttleEvolve(shuttle, p_R, physConst);
+                if ~REVERT_MODEL
+                    dShuttle = shuttleEvolve(shuttle, p_R, physConst);
+                else
+                    dShuttle = 0*shuttle;
+                end
                 
                 % Check for overshoot at weakly enforced sonic BC
 %                 assert(~REVERT_MODEL || u_R < 500)
