@@ -37,7 +37,7 @@ end
                 ((gamma + 1)/2).^(-(gamma+1)/2/(gamma-1));
         else
             % Return interpolated (vector) value of M
-            outputM = pchip(areaRatioVector, MVector, inputA);
+            outputM = interp1(areaRatioVector, MVector, inputA);
         end
     end
 exportFunction = @(inputA) interpolateM(inputA);

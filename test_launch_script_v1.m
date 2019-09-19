@@ -1,11 +1,12 @@
 % Launch script for testing models with diff from [LW2019]
 
+clear;
 clc;
-
 
 %% Set parameters
 nx = 100;       % Number of grid points per 1 m of air gun length
 
+% Reference parameters for test sets 1 to 5
 r = 75;         % Distance from source to receiver [m]
 c_inf = 1482;   % Speed of sound in water [m/s]
 rho_inf = 1000; % Density of water [kg/m^3]
@@ -14,10 +15,31 @@ airgunLength = 0.6;        % [m]
 airgunPortArea = 72;       % [in^2]
 airgunCrossSecArea = 16;   % [in^2]
 airgunDepth = 7.5;         % [m]
+
+% Compression factor as function of shuttle position
 airgunFiringChamberProfile = @(a) error('Placeholder; not implemented');
-airgunOperatingChamberProfile = @(a) error('Placeholder; not implemented');
+accelerationLength = 2*0.0254; % [m]
+airCushionLength = 1*0.0254; % [m]
+% Compression factor as function of shuttle position
+airgunOperatingChamberProfile = @(xi) (xi - accelerationLength < 0) * 1 ...
+    + (xi - accelerationLength > 0) * ...
+    (airCushionLength / (airCushionLength - (xi - accelerationLength)));
 bubbleInitialVolume = 600; % [cui]
 shuttleBdryPenaltyStrength = 1e11; % [N/m]
+
+% % % New set for data matching -- ballpark numbers
+% r = 75;         % Distance from source to receiver [m]
+% c_inf = 1482;   % Speed of sound in water [m/s]
+% rho_inf = 1000; % Density of water [kg/m^3]
+% airgunPressure = 1000;     % [psi]
+% airgunLength = 6;          % [m]
+% airgunPortArea = 120 ;     % [in^2]
+% airgunCrossSecArea = 87.2; % [in^2]
+% airgunDepth = 7.5;         % [m]
+% airgunFiringChamberProfile = @(a) error('Placeholder; not implemented');
+% airgunOperatingChamberProfile = @(a) error('Placeholder; not implemented');
+% bubbleInitialVolume = 600; % [cui]
+% shuttleBdryPenaltyStrength = 1e11; % [N/m]
 
 % Run solve for both models
 [sol, q, bubble, shuttle, ...
@@ -30,6 +52,7 @@ shuttleBdryPenaltyStrength = 1e11; % [N/m]
 t = sol.x; % time
 
 %% Post processing
+gamma = 1.4;
 
 [~,solDY] = deval(sol, t); % Numerical differentiation (second output arg)
 [pPres, R, tInterp] = computePressure(bubble, solDY(1:size(solDY,1)/2,:), t, rho_inf, c_inf, r, airgunDepth);
@@ -141,7 +164,7 @@ legend({'Shuttle','u_R'});
 %% Bubble characteristics
 figure(1004); clf;
 figPos = get(gcf,'Position');
-set(gcf,'Position',[figPos(1) figPos(2) 600 900]);
+set(gcf,'Position',[figPos(1) 0 600 900]);
 
 % bubble volume
 V = 4/3*pi*R.^3;
@@ -169,6 +192,55 @@ ylabel('\Delta p (bar m)');
 xlabel('Time, t-r/c_\infty (ms)');
 hold on;
 plot((tInterp2-r/c_inf)*1000, pPres2*1e-5*r, 'k', 'LineWidth', 1);
+
+
+
+%% Down-bore temperature msmt comparison
+figure(1005); clf;
+cv = 718;
+T = (q(3:3:end,:) - ...
+    0.5 * q(2:3:end,:).^2 ./ q(1:3:end,:)) ./ q(1:3:end,:) / cv;
+T2 = (q2(3:3:end,:) - ...
+    0.5 * q2(2:3:end,:).^2 ./ q2(1:3:end,:)) ./ q2(1:3:end,:) / cv;
+
+T_L = T(30,:);
+T_L2 = T2(30,:);
+
+subplot(1,3,1);
+plot(tAxis, T_L);
+
+subplot(1,3,2);
+plot(tAxis, T_L2);
+
+for i = 1:2
+    subplot(1,3,i);
+    title('Closed-end temperature');
+%     xlim([0, tmax]);
+%     caxis([0, 14e6]);
+    xlabel('Time [ms]');
+    ylabel('T [K]');
+    ylim([120, 300]);
+end
+
+figPos = get(gcf, 'position');
+set(gcf, 'position', [figPos(1:2), 1300, 420])
+
+%% Special: load data
+% Should not work on remote devices
+subplot(1,3,3);
+
+try
+    load ../../LinuxShare/HiTest_Data/HiTestData_v1.mat;
+    T_exper_K = 5/9*(HiTestData(24).iNetCh1Data - 32) + 273.15;
+    plot(1000*(HiTestData(24).iNetTimeAxisT(3710:3790) - ...
+        HiTestData(24).iNetTimeAxisT(3710)), ...
+        T_exper_K(3710:3790)); % [K] vs [s]
+    xlim([0, 80]);
+    ylim([120, 300]);
+end
+title('Closed-end temperature data');
+
+
 
 % %% Plot bubble radius
 % figure(1); clf;

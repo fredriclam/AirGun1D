@@ -123,6 +123,7 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                     % full port area that is exposed
                     APortExposed = physConst.APortTotal * ...
                         (posShuttle / physConst.operatingChamberLength);
+                    APortExposed = 0 ;
                 end
 
                 % Initialize local flags for sonic/subsonic this timestep
