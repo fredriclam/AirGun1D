@@ -255,36 +255,19 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
 %                 fprintf(str + "\n");
                 
                 %% State monitoring
-                if ~REVERT_MODEL
-                    monitor(1,1) = M_R;
-                    if APortExposed > 0
-                        uPort = massFlowPort/(rhoPort * APortExposed);
-                    else
-                        uPort = 0;
-                    end
-                    monitor(2,1) = uPort / sqrt(gamma_ * Q_ * TPort);
-                    monitor(3,1) = caseNum;
-                    monitor(4,1) = u_R;
-                    monitor(5,1) = uPort;
-                    monitor(6,1) = shuttle(2);
-                else
-                    % Do nothing
-                end
+                monitor(1) = u_R;
+                monitor(2) = u
 
                 %% Shuttle (and operating chamber) dynamics
                 % Compute shuttle state evolution
                 % Early data: should be initial ~80g accel
                 if ~REVERT_MODEL
                     volPlug = physConst.plugVolumeFn(shuttle(1));
-                    assert(volPlug > 0);
-                    assert(plug(1) > 0);
-                    assert(plug(2) > 0);
                     rhoPlug = plug(1) /  volPlug;
                     TPlug = plug(2) / plug(1) / physConst.c_v;
                     pPlug = rhoPlug * Q_ * TPlug;                           % TODO: output and complete
                     
-%                     dShuttle = shuttleEvolve(shuttle, p_R, physConst);
-                    dShuttle = shuttleEvolve(shuttle, pPlug, physConst);
+                    dShuttle = shuttleEvolve(shuttle, p_R, physConst);
                 else
                     dShuttle = 0*shuttle;
                 end
