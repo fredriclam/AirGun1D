@@ -2,6 +2,7 @@
 
 clear;
 clc;
+addpath .\FlowRelations
 
 %% Set parameters
 nx = 100;       % Number of grid points per 1 m of air gun length
@@ -42,8 +43,8 @@ shuttleBdryPenaltyStrength = 1e11; % [N/m]
 % shuttleBdryPenaltyStrength = 1e11; % [N/m]
 
 % Run solve for both models
-[sol, q, bubble, shuttle, ...
-    q2, bubble2, shuttle2] = runEulerCodeShuttleDual(nx, ...
+[sol, q, bubble, shuttle, plug, ...
+    q2, bubble2, shuttle2, plug2, monitorStates] = runEulerCodeShuttleDual(nx, ...
     airgunPressure, airgunLength, airgunCrossSecArea, ...
     airgunPortArea, airgunDepth, airgunFiringChamberProfile, ...
     airgunOperatingChamberProfile, bubbleInitialVolume, ...
@@ -55,8 +56,11 @@ t = sol.x; % time
 gamma = 1.4;
 
 [~,solDY] = deval(sol, t); % Numerical differentiation (second output arg)
-[pPres, R, tInterp] = computePressure(bubble, solDY(1:size(solDY,1)/2,:), t, rho_inf, c_inf, r, airgunDepth);
-[pPres2, R2, tInterp2] = computePressure(bubble2, solDY(size(solDY,1)/2+1:end,:), t, rho_inf, c_inf, r, airgunDepth);
+% Cut into the two halves
+DY1 = solDY(1:size(solDY,1)/2,:);
+DY2 = solDY(size(solDY,1)/2+1:end,:);
+[pPres, R, tInterp] = computePressure(bubble, DY1, t, rho_inf, c_inf, r, airgunDepth, size(q,1));
+[pPres2, R2, tInterp2] = computePressure(bubble2, DY2, t, rho_inf, c_inf, r, airgunDepth, size(q,1));
 
 %% Plot 1: density
 figure(1001); clf;
@@ -150,7 +154,8 @@ title('Shuttle pos [m]')
 xlabel('xi [m]')
 ylabel('t [ms]')
 hold on
-plot(0.0762 *[1,1], [0, tAxis(end)]);
+plot(0.0762 *[1,1], [0, tAxis(end)], '-');
+plot(accelerationLength*[1,1], [0, tAxis(end)], '--');
 
 subplot(2,1,2);
 plot(shuttle2(2,:), tAxis, 'LineWidth', 1);
@@ -219,13 +224,14 @@ for i = 1:2
 %     caxis([0, 14e6]);
     xlabel('Time [ms]');
     ylabel('T [K]');
+    xlim([0, 80]);
     ylim([120, 300]);
 end
 
 figPos = get(gcf, 'position');
 set(gcf, 'position', [figPos(1:2), 1300, 420])
 
-%% Special: load data
+%% Attempt to load data
 % Should not work on remote devices
 subplot(1,3,3);
 
@@ -237,10 +243,30 @@ try
         T_exper_K(3710:3790)); % [K] vs [s]
     xlim([0, 80]);
     ylim([120, 300]);
+catch
+    disp('Failed to locate data. Ignoring exp. data plot')
 end
+clear HiTestData;
 title('Closed-end temperature data');
 
+%% Phase plot
+figure(1006); clf;
 
+subsonicStates =       monitorStates(:,monitorStates(3,:)==1);
+chamberLimitedStates = monitorStates(:,monitorStates(3,:)==2);
+shockStates =          monitorStates(:,monitorStates(3,:)==3);
+portLimitedStates =    monitorStates(:,monitorStates(3,:)==4);
+
+plot(subsonicStates(1,:), subsonicStates(2,:), 'r.'); hold on
+plot(chamberLimitedStates(1,:), chamberLimitedStates(2,:), 'r.');
+plot(shockStates(1,:), shockStates(2,:), 'r.');
+plot(portLimitedStates(1,:), portLimitedStates(2,:), 'r.');
+
+xlabel('$M_\mathrm{a}$', 'Interpreter', 'latex', 'FontSize', 14)
+ylabel('$M_\mathrm{port}$', 'Interpreter', 'latex', 'FontSize', 14)
+yL = ylim;
+ylim([0, yL(2)]);
+set(gca, 'FontSize', 14, 'TickLabelInterpreter', 'latex');
 
 % %% Plot bubble radius
 % figure(1); clf;
@@ -418,14 +444,14 @@ end
 disp('Launch script finished.')
 
 %% Define pressure pulse at a distance
-function [pPres, R, tInterp] = computePressure(bubble, DY, t, rho_inf, c_inf, r, airgunDepth)
+function [pPres, R, tInterp] = computePressure(bubble, DY, t, rho_inf, c_inf, r, airgunDepth, qLength)
     R = bubble(1,:); % bubble radius [m]
     V = 4/3*pi*R.^3; % bubble volume [m^3]
     U = bubble(2,:); % bubble wall velocity [m/s]
     mass = bubble(3,:); % bubble mass [kg]
     
     % A = solDY(end-2,:); % acceleration
-    A = DY(end-4,:); % acceleration :: For 4 added states (2 shuttle, 3 port)
+    A = DY(qLength+2,:); % Seek acceleration entry (located after q, and R)
     % warning('Please change above line 43, it`s not right: accessing {q, bubble} data. Consider exporting from solution method');
     [tDir, pDir] = pressure_eqn(t', R', U', A', rho_inf, c_inf, r); % direct pressure perturbation
     [tGhost, pGhost] = pressure_eqn(t', R', U', A', rho_inf, c_inf, r + 2*airgunDepth); %ghost

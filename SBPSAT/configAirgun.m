@@ -54,7 +54,7 @@ switch str
         physConst.Tinf = 288; % temperature assumed constant throughout the system [K]
         physConst.gamma = 1.4; % ratio of heat capacities for dry air
         
-        physConst.AirgunCutoffTime = 0.04; % time when air gun stops firing
+        physConst.AirgunCutoffTime = 0.010; % time when air gun stops firing [s]
         
                 
         % Air gun
@@ -193,6 +193,10 @@ switch str
         % code, although the areas are different
         physConst.shuttle_area_right = 0.0506/0.0586* ...
             physConst.crossSectionalArea; % [m^2]
+        
+        physConst.flangeDepth = 3 * 0.0254; % [m]
+        physConst.plugVolumeFn = @(xi) ...
+            physConst.crossSectionalArea * (xi + physConst.flangeDepth);
 
         % Set shuttle penalty parameter
         % Note: ~1e11 makes sense based on linear elasticity
