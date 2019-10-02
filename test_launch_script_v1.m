@@ -7,40 +7,46 @@ addpath .\FlowRelations
 %% Set parameters
 nx = 100;       % Number of grid points per 1 m of air gun length
 
-% Reference parameters for test sets 1 to 5
-r = 75;         % Distance from source to receiver [m]
-c_inf = 1482;   % Speed of sound in water [m/s]
-rho_inf = 1000; % Density of water [kg/m^3]
-airgunPressure = 2000;     % [psi]
-airgunLength = 0.6;        % [m]
-airgunPortArea = 72;       % [in^2]
-airgunCrossSecArea = 16;   % [in^2]
-airgunDepth = 7.5;         % [m]
+% % Reference test parameters
+% r = 75;         % Distance from source to receiver [m]
+% c_inf = 1482;   % Speed of sound in water [m/s]
+% rho_inf = 1000; % Density of water [kg/m^3]
+% airgunPressure = 2000;     % [psi]
+% airgunLength = 0.6;        % [m]
+% airgunPortArea = 72;       % [in^2]
+% airgunCrossSecArea = 16;   % [in^2]
+% airgunDepth = 7.5;         % [m]
+% 
+% % Compression factor as function of shuttle position
+% airgunFiringChamberProfile = @(a) error('Placeholder; not implemented');
+% accelerationLength = 2*0.0254; % [m]
+% airCushionLength = 1*0.0254; % [m]
+% % Compression factor as function of shuttle position
+% airgunOperatingChamberProfile = @(xi) (xi - accelerationLength < 0) * 1 ...
+%     + (xi - accelerationLength > 0) * ...
+%     (airCushionLength / (airCushionLength - (xi - accelerationLength)));
+% bubbleInitialVolume = 600; % [cui]
+% shuttleBdryPenaltyStrength = 1e11; % [N/m]
 
+% % New set for data matching -- ballpark numbers
+r = 3;                                            % Distance from source to receiver [m]
+c_inf = 1482;                                     % Speed of sound in water [m/s]
+rho_inf = 1000;                                   % Density of water [kg/m^3]
+airgunPressure = 1000;                            % [psi]
+airgunLength = 20800 / (pi*10.020^2/4) * 0.0254;  % [m] For 20800 cui
+airgunPortArea = 2.5 * 0.50 * pi * 11;            % [in^2] % OD; covers 0.5 of cyl
+airgunCrossSecArea = pi*10.020^2/4;               % [in^2]
+airgunDepth = 7.5;                                % [m]
+bubbleInitialVolume = 600; % [cui]
+shuttleBdryPenaltyStrength = 1e11; % [N/m]
 % Compression factor as function of shuttle position
 airgunFiringChamberProfile = @(a) error('Placeholder; not implemented');
-accelerationLength = 2*0.0254; % [m]
-airCushionLength = 1*0.0254; % [m]
+accelerationLength = (3.009-0.542)*0.0254; % [m]
+airCushionLength = 0.542*0.0254;           % [m]
 % Compression factor as function of shuttle position
 airgunOperatingChamberProfile = @(xi) (xi - accelerationLength < 0) * 1 ...
     + (xi - accelerationLength > 0) * ...
     (airCushionLength / (airCushionLength - (xi - accelerationLength)));
-bubbleInitialVolume = 600; % [cui]
-shuttleBdryPenaltyStrength = 1e11; % [N/m]
-
-% % % New set for data matching -- ballpark numbers
-% r = 75;         % Distance from source to receiver [m]
-% c_inf = 1482;   % Speed of sound in water [m/s]
-% rho_inf = 1000; % Density of water [kg/m^3]
-% airgunPressure = 1000;     % [psi]
-% airgunLength = 6;          % [m]
-% airgunPortArea = 120 ;     % [in^2]
-% airgunCrossSecArea = 87.2; % [in^2]
-% airgunDepth = 7.5;         % [m]
-% airgunFiringChamberProfile = @(a) error('Placeholder; not implemented');
-% airgunOperatingChamberProfile = @(a) error('Placeholder; not implemented');
-% bubbleInitialVolume = 600; % [cui]
-% shuttleBdryPenaltyStrength = 1e11; % [N/m]
 
 % Run solve for both models
 [sol, q, bubble, shuttle, plug, ...
@@ -252,14 +258,15 @@ title('Closed-end temperature data');
 %% Phase plot
 figure(1006); clf;
 
+subplot(1,2,1);
 subsonicStates =       monitorStates(:,monitorStates(3,:)==1);
 chamberLimitedStates = monitorStates(:,monitorStates(3,:)==2);
 shockStates =          monitorStates(:,monitorStates(3,:)==3);
 portLimitedStates =    monitorStates(:,monitorStates(3,:)==4);
 
-plot(subsonicStates(1,:), subsonicStates(2,:), 'r.'); hold on
-plot(chamberLimitedStates(1,:), chamberLimitedStates(2,:), 'r.');
-plot(shockStates(1,:), shockStates(2,:), 'r.');
+plot(subsonicStates(1,:), subsonicStates(2,:), 'b.'); hold on
+plot(chamberLimitedStates(1,:), chamberLimitedStates(2,:), 'g.');
+plot(shockStates(1,:), shockStates(2,:), 'k.');
 plot(portLimitedStates(1,:), portLimitedStates(2,:), 'r.');
 
 xlabel('$M_\mathrm{a}$', 'Interpreter', 'latex', 'FontSize', 14)
@@ -267,6 +274,21 @@ ylabel('$M_\mathrm{port}$', 'Interpreter', 'latex', 'FontSize', 14)
 yL = ylim;
 ylim([0, yL(2)]);
 set(gca, 'FontSize', 14, 'TickLabelInterpreter', 'latex');
+
+subplot(1,2,2);
+plot(subsonicStates(8,:), subsonicStates(7,:), 'b.'); hold on
+plot(chamberLimitedStates(8,:), chamberLimitedStates(7,:), 'g.');
+plot(shockStates(8,:), shockStates(7,:), 'k.');
+plot(portLimitedStates(8,:), portLimitedStates(7,:), 'r.');
+plot(monitorStates(8,:),monitorStates(7,:),'-');
+
+xlabel('$A_\mathrm{p} / A_\mathrm{cs}$', 'Interpreter', 'latex', 'FontSize', 14)
+ylabel('$p_\mathrm{t} / p^* $', 'Interpreter', 'latex', 'FontSize', 14)
+yL = ylim;
+ylim([0, yL(2)]);
+set(gca, 'FontSize', 14, 'TickLabelInterpreter', 'latex');
+set(gca,'YScale','log')
+ylim([1, 1e3])
 
 % %% Plot bubble radius
 % figure(1); clf;
@@ -440,8 +462,28 @@ if false
     T2 =((q2(3:3:end,:) - 0.5 * q2(1:3:end,:) .* u2.^2)/c_v);
 end
 
+
 %% Console report
 disp('Launch script finished.')
+
+folderNameRoot = "testLaunch";
+index = 1;
+while exist(folderNameRoot + sprintf('%02d',index),'dir')
+    index = index + 1;
+end
+folderName = folderNameRoot + sprintf('%02d',index);
+mkdir(folderName);
+cd(folderName);
+for i = 1001:1006
+    figure(i);
+    savefig(num2str(i));
+end
+
+save('runningData','monitorStates')
+
+cd ..
+
+disp("Figures saved to "+ folderName);
 
 %% Define pressure pulse at a distance
 function [pPres, R, tInterp] = computePressure(bubble, DY, t, rho_inf, c_inf, r, airgunDepth, qLength)

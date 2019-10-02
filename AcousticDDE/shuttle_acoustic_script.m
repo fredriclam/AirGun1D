@@ -8,16 +8,16 @@
 %% Params
 clear;
 m = 63 * .454;                % [kg]
-L = 0.6;                      % [m]
-p0 = 2000 * 0.068046e5;       % [Pa]
+L = 6;                      % [m]
+p0 = 1000 * 0.068046e5;       % [Pa]
 T0 = 300;                     % [K]
 gamma = 1.4;                  % [-]
 R = 287;                      % [J / kg K]
 c = sqrt(gamma * R * T0);     % [m/s]
 rho0 = p0 / (R * T0);         % [kg/m^3]
 
-cushLength = 3.0 * 0.0254;      % [m]
-accelLength = 0.0 * 0.0254;     % [m]
+cushLength = 0.5 * 0.0254;      % [m]
+accelLength = 2.5 * 0.0254;     % [m]
 pRFactor = @(xi) (xi <= accelLength) * (1) + ...
     (xi > accelLength) * ...
     (cushLength / (cushLength - (xi - accelLength))) .^ gamma; % [-]
@@ -90,7 +90,7 @@ function [tVector, xVector] = DDESolve(tFinal, globalDamp, lagDamp, ...
     m, L, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L)
 
 tFinal = 0.100;
-N = 10000;
+N = 50000;
 tVector = linspace(0, tFinal, N+1);
 xVector = nan(2, length(tVector));
 dt = tFinal/N;

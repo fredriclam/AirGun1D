@@ -33,7 +33,7 @@ assert(all(isreal(dz)));
 % Arbitrary damping model
 % Input: state vector z --- [pos; vel]
 function dampingForce = linearDampingForce(z)
-dampingForce = - 3e4 * z(2);
+dampingForce = - 5e4 * z(2);
 
 % Constant damping force
 % Coefficient of friction (would be empirical). Doesn't really do much!

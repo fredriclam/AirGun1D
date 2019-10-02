@@ -6,7 +6,7 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
     end
     
     methods
-        function obj = DiscrAirgunShuttleMulti(m,order,airgunPressure,...
+        function obj = DiscrAirgunShuttleMulti(nx,order,airgunPressure,...
                 airgunLength,airgunPortArea,...
                 airgunDepth, airgunCrossSectionalArea, REVERT_MODEL, ...
                 airgunFiringChamberProfile, ...
@@ -16,8 +16,10 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                 error('Incorrect # of arguments for unreverted model.')
             end
             
+            DEBUG = false;
+            
             % Call parent constructor
-            obj = obj@DiscrAirgun(m,order,airgunPressure,...
+            obj = obj@DiscrAirgun(nx,order,airgunPressure,...
                 airgunLength,airgunPortArea,...
                 airgunDepth);
             if ~REVERT_MODEL
@@ -92,9 +94,20 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
             %% Redefine RHS to include evolution of shuttle and port-region
             function [dq, dBubble, dShuttle, dPlug, monitor] = ...
                     RHS(q, t, bubble, shuttle, plug)
+                
+                IGNORE_MASS =  true;
+                
                 %% Precompute
                 % Compute primitive variables at right of PDE domain
-                q_R = schm.e_R'*q;
+                if REVERT_MODEL
+                    q_R = schm.e_R'*q;
+                else
+%                     q_R = q(end-5:end-3); % Go one node in for weak enforcement effects
+%                     if sign(q(end-1)) * sign(q_R(2)) < 0
+%                         q_R(2) = 0;
+%                     end
+                    q_R = schm.e_R'*q;
+                end
                 p_R = schm.p(q_R);
                 rho_R = q_R(1);
                 u_R =  q_R(2)/q_R(1);
@@ -135,6 +148,10 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                             '; u|x=0 = ' num2str(u_R)]);
                     end
                 elseif flowState == scheme.Euler1d.SUPERSONIC_OUTFLOW
+%                     isSonicFlags(1) = true;
+                end
+                
+                if M_R >= 1
                     isSonicFlags(1) = true;
                 end
 
@@ -152,7 +169,13 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                 else
                     % Plug flow:
                     % Split velocity at constant pressure to the plug
-                    uUpstream = u_R - shuttle(2);
+                    if IGNORE_MASS
+                        uUpstream = u_R;
+                    else
+                        uUpstream = u_R - shuttle(2);
+                    end
+%                     
+                    
                     
                     %% Case split
                     % Case 1: subsonic everywhere
@@ -196,39 +219,168 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                     % Stagnation pressure required for choked flow at neck,
                     % estimated using characteristic bubble velocities
                     %                                                       % TODO: Check using p0, rather than p_L
-                    pCrit = pBubble / pressureMachFunction(gamma_, ...
-                            bubble(2) / sqrt(gamma_ * Q_ * TBubble));
-                    if p_R < pCrit
+                    charMBubble = bubble(2) / sqrt(gamma_ * Q_ * TBubble);
+                    p0bubble = pBubble / pressureMachFunction(gamma_, ...
+                            charMBubble);
+                    % Compute the critical pressure at which the flow
+                    % doesn't go supersonic from downstream
+                    pCrit = p0bubble*pressureMachFunction(gamma_,1);
+                    
+                    % Compute flow throat pressure
+                    delayedPMeas = false;
+                    if M_R < 1e-5
+                        % No-flow case
+                            pThroat = p_R;
+                    elseif APortExposed < physConst.crossSectionalArea
+                        try
+                        % Take port pressure through isentropic expansion
+                        sonicArea = physConst.crossSectionalArea / ...
+                            areaMachFunction(gamma_, M_R);
+                        MPort = obj.machAreaFunction( ...
+                            APortExposed / sonicArea);
+                        pPort = p_R / pressureMachFunction(gamma_, M_R)...
+                            * pressureMachFunction(gamma_, MPort);
+                        pThroat = pPort;
+                        catch
+                            delayedPMeas = true;
+                            pThroat = Inf;
+                        end
+                    else
+                        % Take upstream pressure (chocked at A_cs)
+                        pThroat = p_R;
+                    end
+                    
+                    % Case overlap: can't have low pressure sonic expanding
+                    % into higher pressure. In practice, the equations
+                    % should be self-correcting
+                    if((pThroat < pCrit && isSonicFlags(1)))
+                        warning('Sonic-pressure contradiction');
+                    end
+                    
+                    if isSonicFlags(1)
+                        % Resolve subsonic expansion or shock
+%                         try
+                            % Sonic expanding into subsonic                 TODO: could it be supersonic?                                         
+                            caseNum = 3;
+                            [velPort, pPort, TPort, rhoPort, cPort, massFlowPort] ...
+                            = resolveSonicChamber(obj, APortExposed, uUpstream/c_R, p_R, T_R);
+%                         catch e
+%                             % Sonic with contraction
+%                             caseNum = 4;
+%                             % Pass error as warning and resolve
+%                             warning(e.message);
+%                             error("Unresolved port-shock case in top level.");
+%                         end
+                    elseif pThroat < pCrit
                         caseNum = 1;
-                        assert(~isSonicFlags(1));
-%                         assert(uUpstream >= 0);                             % TODO: find better workaround
+                        if DEBUG
+                            assert(uUpstream >= 0);
+                        end
                         [vel_a, pPort, TPort, rhoPort, cPort, ...
                             massFlowPort, pUpstream] = ...
                             resolveSubsonic(obj, APortExposed, ...
                             uUpstream/c_R, p_R, T_R, ...
-                            APortExposed, ... % Set the jet diameter equal to the port
-                            bubble(2)/sqrt(gamma_ * Q_ * TBubble), ... 
-                            ... Set jet mach number equal to bubble exp rate
-                            pBubble, TBubble);
-                        
+                            charMBubble, pBubble);
                         % Airgun velocity is what it is--BC moved to
-                        % pressure
-                        vel_a = u_R;
-                    elseif isSonicFlags(1)
-                        caseNum = 2;
-                        [velPort, pPort, TPort, rhoPort, cPort, massFlowPort] ...
-                        = resolveSonicChamber(obj, APortExposed, uUpstream/c_R, p_R, T_R);
-                    elseif false
-                        caseNum = 3;
-                        error('Shock code doesn''t exist yet');
+                        % pressure; should be discarded
+                        vel_a = NaN;
                     else
-                        caseNum = 4;
-                        [velUp, pPort, TPort, rhoPort, cPort, massFlowPort]...
-                        = resolveSonicPort(obj, APortExposed, uUpstream/c_R, p_R, T_R);
-                        % Add constraint velocity of plug flow
-                        vel_a = velUp + shuttle(2);
-                        isSonicFlags(2) = true;
+%                         try
+                            caseNum = 2;
+                            [velUp, pPort, TPort, rhoPort, cPort, massFlowPort]...
+                            = resolveSonicPort(obj, APortExposed, uUpstream/c_R, p_R, T_R);
+%                             assert(pPort >= pCrit);                         % HACK
+                            % Add constraint velocity of plug flow
+                            if IGNORE_MASS
+                                vel_a = velUp;
+                            else
+                                vel_a = velUp + shuttle(2);
+                            end
+                            isSonicFlags(2) = true;
+%                         catch
+%                             % Subsonic hack
+%                             caseNum = 1;
+% %                             assert(pPort >= pBubble);
+% %                             assert(physConst.crossSectionalArea > APortExposed)
+% %                             assert(~isSonicFlags(1));
+%                             %                         assert(uUpstream >= 0); % TODO: find better workaround
+%                             [vel_a, pPort, TPort, rhoPort, cPort, ...
+%                                 massFlowPort, pUpstream] = ...
+%                                 resolveSubsonic(obj, APortExposed, ...
+%                                 uUpstream/c_R, p_R, T_R, ...
+%                                 APortExposed, ... % Set the jet diameter equal to the port
+%                                 bubble(2)/sqrt(gamma_ * Q_ * TBubble), ...
+%                                 ... Set jet mach number equal to bubble exp rate
+%                                 pBubble, TBubble);
+%                             % Airgun velocity is what it is--BC moved to
+%                             % pressure
+%                             vel_a = u_R;
+%                             isSonicFlags(2) = false;
+%                             % End hack
+%                         end
                     end 
+                    
+                    if delayedPMeas
+                        pThroat = pPort;
+                    end
+                    
+                    
+                    
+                    % Core block [V1]
+%                     if false %~isSonicFlags(1) && p < pBubble%p_R < pCrit
+%                         caseNum = 1;
+%                         assert(~isSonicFlags(1));
+% %                         assert(uUpstream >= 0);                             % TODO: find better workaround
+%                         [vel_a, pPort, TPort, rhoPort, cPort, ...
+%                             massFlowPort, pUpstream] = ...
+%                             resolveSubsonic(obj, APortExposed, ...
+%                             uUpstream/c_R, p_R, T_R, ...
+%                             APortExposed, ... % Set the jet diameter equal to the port
+%                             bubble(2)/sqrt(gamma_ * Q_ * TBubble), ... 
+%                             ... Set jet mach number equal to bubble exp rate
+%                             pBubble, TBubble);
+%                         
+%                         % Airgun velocity is what it is--BC moved to
+%                         % pressure
+%                         vel_a = u_R;
+%                     elseif isSonicFlags(1)
+%                         caseNum = 2;
+%                         [velPort, pPort, TPort, rhoPort, cPort, massFlowPort] ...
+%                         = resolveSonicChamber(obj, APortExposed, uUpstream/c_R, p_R, T_R);
+%                     elseif false
+%                         caseNum = 3;
+%                         error('Shock code doesn''t exist yet');
+%                     else
+%                         try
+%                             caseNum = 4;
+%                             [velUp, pPort, TPort, rhoPort, cPort, massFlowPort]...
+%                             = resolveSonicPort(obj, APortExposed, uUpstream/c_R, p_R, T_R);
+%                             assert(pPort >= pCrit);                         % HACK
+%                             % Add constraint velocity of plug flow
+%                             vel_a = velUp + shuttle(2);
+%                             isSonicFlags(2) = true;
+%                         catch
+%                             % Subsonic hack
+%                             caseNum = 1;
+% %                             assert(pPort >= pBubble);
+% %                             assert(physConst.crossSectionalArea > APortExposed)
+% %                             assert(~isSonicFlags(1));
+%                             %                         assert(uUpstream >= 0); % TODO: find better workaround
+%                             [vel_a, pPort, TPort, rhoPort, cPort, ...
+%                                 massFlowPort, pUpstream] = ...
+%                                 resolveSubsonic(obj, APortExposed, ...
+%                                 uUpstream/c_R, p_R, T_R, ...
+%                                 APortExposed, ... % Set the jet diameter equal to the port
+%                                 bubble(2)/sqrt(gamma_ * Q_ * TBubble), ...
+%                                 ... Set jet mach number equal to bubble exp rate
+%                                 pBubble, TBubble);
+%                             % Airgun velocity is what it is--BC moved to
+%                             % pressure
+%                             vel_a = u_R;
+%                             isSonicFlags(2) = false;
+%                             % End hack
+%                         end
+%                     end 
                 end
 
                 %% Console output
@@ -253,9 +405,21 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
 %                 str = str + ...
 %                     " | APORT/A*: " + sprintf("%.4e", APortOnASonic);
 %                 fprintf(str + "\n");
+
+                %% State regularization
+                if M_R < 0 && ~REVERT_MODEL
+                    M_R = 0;
+                    u_R = 0;
+                    warning('Negative mach number')
+                end
                 
                 %% State monitoring
                 if ~REVERT_MODEL
+                    assert(all(isreal([M_R, u_R, c_R, cPort, ...
+                        pThroat, massFlowPort, rhoPort, pPort])));
+                    assert(all([M_R, u_R, c_R, cPort, ...
+                        pThroat, massFlowPort, rhoPort, pPort, TPort] >= 0));
+                    
                     monitor(1,1) = M_R;
                     if APortExposed > 0
                         uPort = massFlowPort/(rhoPort * APortExposed);
@@ -267,6 +431,8 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                     monitor(4,1) = u_R;
                     monitor(5,1) = uPort;
                     monitor(6,1) = shuttle(2);
+                    monitor(7,1) = pThroat/pCrit;
+                    monitor(8,1) = APortExposed/physConst.crossSectionalArea;
                 else
                     % Do nothing
                 end
@@ -313,7 +479,7 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                             dq = dq + closure_r_out_sub(q, pUpstream);
                         end
                     else
-                        warning('Sonic-in-chamber case not treated.')
+%                         warning('Sonic-in-chamber case not treated.')
                     end
                 end
                 
@@ -391,46 +557,43 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
         %   M_R > 0
         function [vel_a, pPort, TPort, rhoPort, cPort, massFlowPort, pUpstream] ...
                  = resolveSubsonic(obj, APortExposed, ...
-                M_R, p_R, T_R, ...
-                ADownstream, MDownstream, pDownstream, TDownstream)
+                MUpstream, pUpstream, TUpstream, ...
+                MDownstream, pDownstream)
             %% Pre
-%             assert(M_R >= 0);
-            % Workaround:
-            M_R = max([0, M_R]);
+%             assert(MUpstream >= 0);
+            % Workaround: capping the mach number due to overloss to the
+            % plug flow
+            MUpstream = max([0, MUpstream]);
+
             %% Take positive part of the exposed area
             APortExposed = max([0, APortExposed]);
-            %% Compute upstream pressure from downstream information
+
+            %% Compute upstream pressure from downstream information [V1]
             gamma_ = obj.physConst.gamma;
             Q_ = obj.physConst.Q;
             
-            ARatio = areaMachFunction(gamma_, MDownstream);
-            ASonic = ADownstream / ARatio;
-%             assert(APortExposed / ASonic <= 1);
-            
+            % Compute the stagnation pressure from output
             pTotal = pDownstream / ...
                 pressureMachFunction(gamma_, MDownstream);
-            TTotal = TDownstream / ...                                      % TODO: compare to upstream T
-                temperatureMachFunction(gamma_, MDownstream);
-            MUpstream = obj.machAreaFunction(...
-                obj.physConst.crossSectionalArea / ASonic);
+            % Compute upstream pressure
             pUpstream = pTotal * pressureMachFunction(gamma_, MUpstream);
+            % Compute stagnation energy from upstream
+            TTotal = TUpstream / temperatureMachFunction(gamma_, MUpstream);             % Q: Which one to use?
             
-            % Enforced density
-            rho_R = pUpstream / (Q_ * T_R);
-            u_R = M_R * sqrt(gamma_ * Q_ * T_R);
-                                                                            % TODO: Check p_R - pUpstream violation
-            massFlowPort = rho_R * u_R * obj.physConst.crossSectionalArea;  % Compare value to port mass flow rate
-            
-            %% Compute port properties
-            MPort = obj.machAreaFunction(...
-                APortExposed / ASonic);
-            pPort = pTotal * pressureMachFunction(gamma_, MPort);
+            % Compute sonic area from upstream
+            ASonic = obj.physConst.crossSectionalArea / ...
+                areaMachFunction(gamma_, MUpstream);
+            % Use relative area for M Port
+            MPort = obj.machAreaFunction(APortExposed/ASonic);
+            % Compute the rest of the state at port
             TPort = TTotal * temperatureMachFunction(gamma_, MPort);
-            rhoPort = pPort / (Q_ * TPort);
             cPort = sqrt(gamma_ * Q_ * TPort);
+            pPort = pTotal * pressureMachFunction(gamma_, MUpstream);
+            rhoPort = pPort / (Q_ * TPort);
+            massFlowPort = MPort * cPort * rhoPort * APortExposed;
             
             % Compute chamber exit velocity (just unwinding the Mach #)
-            vel_a = M_R * sqrt(gamma_ * Q_ * T_R);
+            vel_a = MUpstream * sqrt(gamma_ * Q_ * TUpstream);
         end        
         
         % Sonic port, subsonic firing chamber
@@ -458,14 +621,23 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
             % Set sonic area to be the positive part of the
             % current port area
             A_sonic = max([0,APortExposed]);            
+            
+            % Numerical tolerancing
+            if obj.physConst.crossSectionalArea / A_sonic > 1 ...
+                && obj.physConst.crossSectionalArea / A_sonic < 1.2
+                A_sonic = obj.physConst.crossSectionalArea;
+            end
+            
             % Compute chamber outlet velocity as dependent
             if APortExposed <= 0
                 vel_a = 0;
             else
                 % Compute upstream mach number (set M_a as
                 % boundary condition)
-                M_a = obj.machAreaFunction(...
-                    obj.physConst.crossSectionalArea / A_sonic);
+                areaRatio = obj.physConst.crossSectionalArea / A_sonic;
+                % Fix the area ratio
+                areaRatio = max(areaRatio, 1);
+                M_a = obj.machAreaFunction(areaRatio);
                 vel_a = M_a * sqrt(gamma_ * Q_ * T_R);
             end            
             %% Compute choked properties at port
@@ -481,10 +653,10 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
             
             %% Sanity check
             assert(TPort > 0 && ...
-                   pPort > 0 && ...
-                   rhoPort > 0 && ...
-                   cPort > 0 && ...
-                   isreal(cPort))
+                pPort > 0 && ...
+                rhoPort > 0 && ...
+                cPort > 0 && ...
+                isreal(cPort))
         end
         
         
@@ -511,20 +683,26 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
         function [velPort, pPort, TPort, rhoPort, cPort, massFlowPort] ...
                 = resolveSonicChamber(obj, APortExposed, M_L, p_L, T_L)
             %% Precheck
+            if M_L > 1
+%                 warning('Shuttle velocity acting up!')
+                M_L = min(1, M_L);
+            end
             assert(APortExposed >= 0 && ...
                    M_L <= 1 && ...
                    p_L > 0 && ...
                    T_L > 0);
+            %% Define aliases and constants
+            gamma_ = obj.physConst.gamma;
+            Q_ = obj.physConst.Q;
             %% Compute port conditions using forward relations
             ASonic = obj.physConst.crossSectionalArea / ...
-                areaMachFunction(M_L);
+                areaMachFunction(gamma_, M_L);
             portAreaRatio = APortExposed/ASonic;
             % Check for shock formation due to limited port size
             if portAreaRatio < 1
-                error('Shock formation. Redirect.');
+                portAreaRatio = 1;
+%                 warning('Not really shock formation. Redirect.');
             end
-            gamma_ = obj.physConst.gamma;
-            Q_ = obj.physConst.Q;
             MPort = obj.machAreaFunction(portAreaRatio);
             pPort = p_L * pressureMachFunction(gamma_, MPort) / ...
                 pressureMachFunction(gamma_, M_L);

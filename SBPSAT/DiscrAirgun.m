@@ -34,7 +34,7 @@ classdef DiscrAirgun < noname.Discretization
             fprintf('Starting at time t0 = %f\n',t0)
 
 
-            m = (xlim{2}-xlim{1})*m+1;
+            m = ceil((xlim{2}-xlim{1})*m+1);
 
             schm = scheme.Euler1d(m,xlim,order,[],[],true);
   

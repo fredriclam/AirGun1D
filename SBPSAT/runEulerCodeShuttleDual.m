@@ -124,7 +124,7 @@ function [sol, q1, bubble1, shuttle1, plug1, ...
 
     y0 = [q0; bubble0; shuttle0; plug0; q0; bubble0; shuttle0; plug0];
     
-    tspan = [0; 0.080]; % Simulation tmin to tmax (used for set-test)
+    tspan = [0; 0.030]; % Simulation tmin to tmax (used for set-test)
 %     tspan = [0; 0.250]; % Simulation tmin to tmax (specify here)
 %     tspan = [0; 2]; % Simulation tmin to tmax (specify here)
 %     options = odeset('RelTol',1e-6);

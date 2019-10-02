@@ -88,7 +88,7 @@ switch str
         %icBubble.m = p*V_airgun_const / (Q*T); 
         %icBubble.E = c_v * icBubble.m * T;
     
-    case 'GeneralAirgun'
+    case 'GeneralAirgun' % Based on the TPS
         % Modified version to accommodate additional parameters relevant to
         % the airgun
         
@@ -176,7 +176,7 @@ switch str
         % Ludvig uses: 0.0464 [m^2] ~ 72 in^2
         
         % Set fixed operating chamber length [m]
-        physConst.operatingChamberLength = 3 *0.0254;
+        physConst.operatingChamberLength = 3.009 *0.0254;
         
         % Set firing chamber and operating chamber profiles A(x)
         physConst.airgunFiringChamberProfile = ...
@@ -188,13 +188,23 @@ switch str
 %         A_L = 0.0586; % [m^2]
 %         A_R = 0.0506; % [m^2]
         % Artificial shuttle left and right areas
-        physConst.shuttle_area_left = physConst.crossSectionalArea; % [m^2]
+        physConst.shuttle_area_left = pi/4 * (11.2 * 0.0254)^2; % [m^2]
+        % physConst.shuttle_area_left = physConst.crossSectionalArea; % [m^2]
+        
         % Reasonable guess to shuttle right area: ratio using Ludvig's
-        % code, although the areas are different
-        physConst.shuttle_area_right = 0.0506/0.0586* ...
-            physConst.crossSectionalArea; % [m^2]
+        % code, although the areas are different [deprecate]
+%         physConst.shuttle_area_right = 0.0506/0.0586* ...
+%             physConst.crossSectionalArea; % [m^2]
+
+        % Front of shuttle: projected area of cushioned side of piston
+        physConst.shuttle_area_right = pi/4 * ( ...
+            (11.1 * 0.0254)^2); % [m^2]        
+        % Rear of shuttle: projected area of piston, minus the shaft area
+        physConst.shuttle_area_right_rear = pi/4 * ( ...
+            (11.1 * 0.0254)^2 - (2.1 * 0.0254)^2); % [m^2]
         
         physConst.flangeDepth = 3 * 0.0254; % [m]
+        % Approximate the flage ID to be equal to the chamber
         physConst.plugVolumeFn = @(xi) ...
             physConst.crossSectionalArea * (xi + physConst.flangeDepth);
 
