@@ -27,6 +27,8 @@ function [sol, q1, bubble1, shuttle1, plug1, ...
     
     lastPlot = 0;
     monitorStates = [];
+    p_RTarget = [];
+    u_RTarget = [];
     function dy = odefun(t,y)
         % Manually partition y into each subsystem
         ind1 = 1;
@@ -46,7 +48,7 @@ function [sol, q1, bubble1, shuttle1, plug1, ...
         plug1 = y(ind1:ind2);
         
         % Update reverted model
-        [dq, dBubble, dShuttle, dPlug] = RHSRevert(q1,t,bubble1,shuttle1,plug1);
+        [dq, dBubble, dShuttle, dPlug, ~] = RHSRevert(q1,t,bubble1,shuttle1,plug1);
         dyRevert = [dq; dBubble; dShuttle; dPlug];
 
         % Extract concatenated data
@@ -67,8 +69,8 @@ function [sol, q1, bubble1, shuttle1, plug1, ...
         plug2 = y(ind1:ind2);
         
         % Update new model
-        [dq, dBubble, dShuttle, dPlug, monitor] = ...
-            RHSShuttle(q2,t,bubble2,shuttle2,plug2);
+        [dq, dBubble, dShuttle, dPlug, p_RTarget, u_RTarget, monitor] = ...
+            RHSShuttle(q2,t,bubble2,shuttle2,plug2,p_RTarget,u_RTarget);
         dyShuttle = [dq; dBubble; dShuttle; dPlug];
         
         % Concatenate dy
@@ -124,11 +126,12 @@ function [sol, q1, bubble1, shuttle1, plug1, ...
 
     y0 = [q0; bubble0; shuttle0; plug0; q0; bubble0; shuttle0; plug0];
     
+    tspan = [0; 0.010]; % Simulation tmin to tmax (used for set-test)
     tspan = [0; 0.030]; % Simulation tmin to tmax (used for set-test)
 %     tspan = [0; 0.250]; % Simulation tmin to tmax (specify here)
 %     tspan = [0; 2]; % Simulation tmin to tmax (specify here)
 %     options = odeset('RelTol',1e-6);
-    options = odeset('RelTol',1e-6);
+    options = odeset('RelTol',1e-6, 'MaxStep', 1e-4);
     
     sol = ode45(@odefun, tspan, y0,options);
 

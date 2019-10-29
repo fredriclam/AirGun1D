@@ -61,7 +61,7 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
             % TODO: check sensitivity
             % TODO: incorporate initial volume encompassed by shuttle but
             % not relevant to the port area calculation
-            obj.shuttle0 = [1e-3; % [m]
+            obj.shuttle0 = [1e-6; % [m]
                             0];   % [m/s]
 
             if ~REVERT_MODEL
@@ -92,10 +92,10 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
             end
             
             %% Redefine RHS to include evolution of shuttle and port-region
-            function [dq, dBubble, dShuttle, dPlug, monitor] = ...
-                    RHS(q, t, bubble, shuttle, plug)
-                
-                IGNORE_MASS =  true;
+            function [dq, dBubble, dShuttle, dPlug, p_RTarget, u_RTarget, monitor] = ...
+                    RHS(q, t, bubble, shuttle, plug, p_RTarget, u_RTarget)
+                %% Set flag for bypassing plug modeling
+                BYPASS_PLUG =  true;
                 
                 %% Precompute
                 % Compute primitive variables at right of PDE domain
@@ -108,9 +108,36 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
 %                     end
                     q_R = schm.e_R'*q;
                 end
-                p_R = schm.p(q_R);
+
+                % Replace p_R with target pressure
+                if REVERT_MODEL
+                    p_R = schm.p(q_R);
+                    u_R =  q_R(2)/q_R(1);
+                else
+                    % p_RTarget empty means no pressure enforcement
+                    if ~isempty(p_RTarget)
+                        p_R = p_RTarget;
+                    else
+                        p_R = schm.p(q_R);
+                        if p_R < 0
+                            p_R = schm.p(q(end-8:end-6));
+                        end
+                    end
+                    
+                    if ~isempty(u_RTarget)
+%                         u_R = u_RTarget; % TODO: USE
+                        u_R = q_R(2)/q_R(1);
+                    else
+                        u_R = q_R(2)/q_R(1);
+                    end
+                    
+                                            
+                end
+                % Default to empty target pressure, velocity constraint
+                p_RTarget = [];
+                u_RTarget = [];
+                
                 rho_R = q_R(1);
-                u_R =  q_R(2)/q_R(1);
                 en_R = q_R(3);
                 T_R = p_R / rho_R / Q_;
                 c_R = sqrt(physConst.gamma * Q_ * T_R);
@@ -135,6 +162,17 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                     APortExposed = physConst.APortTotal * ...
                         (posShuttle / physConst.operatingChamberLength);
 %                     APortExposed = 0;
+
+                    if p_R < 0 || rho_R < 0 || T_R < 0
+                        % Re-extract from next point in (hopefully some
+                        % interlacing property)
+                        q_R = q(end-8:end-6);
+                        rho_R = q_R(1);
+                        en_R = q_R(3);
+                        T_R = p_R / rho_R / Q_;
+                        c_R = sqrt(physConst.gamma * Q_ * T_R);
+                        M_R = u_R / c_R;
+                    end
                 end
 
                 % Initialize local flags for sonic/subsonic this timestep
@@ -151,8 +189,11 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
 %                     isSonicFlags(1) = true;
                 end
                 
-                if M_R >= 1
-                    isSonicFlags(1) = true;
+                % reversion: don't trust weak boundary enforcement
+                if REVERT_MODEL
+                    if M_R >= 1
+                        isSonicFlags(1) = true;
+                    end
                 end
 
                 if REVERT_MODEL
@@ -169,7 +210,7 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                 else
                     % Plug flow:
                     % Split velocity at constant pressure to the plug
-                    if IGNORE_MASS
+                    if BYPASS_PLUG
                         uUpstream = u_R;
                     else
                         uUpstream = u_R - shuttle(2);
@@ -232,19 +273,26 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                         % No-flow case
                             pThroat = p_R;
                     elseif APortExposed < physConst.crossSectionalArea
-                        try
-                        % Take port pressure through isentropic expansion
-                        sonicArea = physConst.crossSectionalArea / ...
-                            areaMachFunction(gamma_, M_R);
-                        MPort = obj.machAreaFunction( ...
-                            APortExposed / sonicArea);
-                        pPort = p_R / pressureMachFunction(gamma_, M_R)...
-                            * pressureMachFunction(gamma_, MPort);
-                        pThroat = pPort;
-                        catch
-                            delayedPMeas = true;
-                            pThroat = Inf;
-                        end
+%                         try
+                            % Take port pressure through isentropic expansion
+                            sonicArea = physConst.crossSectionalArea / ...
+                                areaMachFunction(gamma_, M_R);
+                            % HACK: port smaller than sonic area
+                            % i.e., round to sonic area
+                            % TODO: need to generate a shock
+                            if APortExposed / sonicArea < 1
+                                APortExposed = sonicArea;
+                            end
+                            MPort = obj.machAreaFunction( ...
+                                APortExposed / sonicArea);
+                            pPort = p_R / pressureMachFunction(gamma_, M_R)...
+                                * pressureMachFunction(gamma_, MPort);
+                            pThroat = pPort;
+%                         catch
+%                             warning('zing')
+%                             delayedPMeas = true;
+%                             pThroat = Inf;
+%                         end
                     else
                         % Take upstream pressure (chocked at A_cs)
                         pThroat = p_R;
@@ -257,7 +305,7 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                         warning('Sonic-pressure contradiction');
                     end
                     
-                    if isSonicFlags(1)
+                    if pThroat > pCrit && APortExposed > physConst.crossSectionalArea % isSonicFlags(1)
                         % Resolve subsonic expansion or shock
 %                         try
                             % Sonic expanding into subsonic                 TODO: could it be supersonic?                                         
@@ -268,9 +316,10 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
 %                             % Sonic with contraction
 %                             caseNum = 4;
 %                             % Pass error as warning and resolve
-%                             warning(e.message);
+%                             warning(e.message);t
 %                             error("Unresolved port-shock case in top level.");
 %                         end
+                        isSonicFlags(1) = true;
                     elseif pThroat < pCrit
                         caseNum = 1;
                         if DEBUG
@@ -284,6 +333,8 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                         % Airgun velocity is what it is--BC moved to
                         % pressure; should be discarded
                         vel_a = NaN;
+                        % Save the target pressure
+                        p_RTarget = pUpstream;
                     else
 %                         try
                             caseNum = 2;
@@ -291,11 +342,13 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                             = resolveSonicPort(obj, APortExposed, uUpstream/c_R, p_R, T_R);
 %                             assert(pPort >= pCrit);                         % HACK
                             % Add constraint velocity of plug flow
-                            if IGNORE_MASS
+                            if BYPASS_PLUG
                                 vel_a = velUp;
                             else
                                 vel_a = velUp + shuttle(2);
                             end
+                            u_RTarget = vel_a;
+%                             p_RTarget = pPort;
                             isSonicFlags(2) = true;
 %                         catch
 %                             % Subsonic hack
@@ -412,7 +465,28 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                     u_R = 0;
                     warning('Negative mach number')
                 end
+
+                %% Shuttle (and operating chamber) dynamics
+                % Compute shuttle state evolution
+                % Early data: should be initial ~80g accel
+                if ~REVERT_MODEL
+                    volPlug = physConst.plugVolumeFn(shuttle(1));
+                    assert(volPlug > 0);
+                    assert(plug(1) > 0);
+                    assert(plug(2) > 0);
+                    rhoPlug = plug(1) /  volPlug;
+                    TPlug = plug(2) / plug(1) / physConst.c_v;
+                    pPlug = rhoPlug * Q_ * TPlug;                           % TODO: output and complete
+                    % HACK: override pPlug with p_R
+                    pPlug = p_R;
+                    dShuttle = shuttleEvolve(shuttle, p_R, physConst);
+                else
+                    dShuttle = 0*shuttle;
+                end
                 
+                % Check for overshoot at weakly enforced sonic BC
+%                 assert(~REVERT_MODEL || u_R < 500)
+
                 %% State monitoring
                 if ~REVERT_MODEL
                     assert(all(isreal([M_R, u_R, c_R, cPort, ...
@@ -432,32 +506,19 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                     monitor(5,1) = uPort;
                     monitor(6,1) = shuttle(2);
                     monitor(7,1) = pThroat/pCrit;
-                    monitor(8,1) = APortExposed/physConst.crossSectionalArea;
+                    monitor(8,1) = (physConst.APortTotal * ...
+                        (posShuttle / physConst.operatingChamberLength))...
+                        /physConst.crossSectionalArea;
+                    monitor(9,1) = pPlug;
+                    monitor(10,1) = p_R;
+                    monitor(11,1) = pPort;
+                    monitor(12,1) = pCrit;
+                    monitor(13,1) = t;
+                    monitor(14,1) = dShuttle(2) * physConst.shuttleAssemblyMass * shuttle(2);
                 else
                     % Do nothing
                 end
 
-                %% Shuttle (and operating chamber) dynamics
-                % Compute shuttle state evolution
-                % Early data: should be initial ~80g accel
-                if ~REVERT_MODEL
-                    volPlug = physConst.plugVolumeFn(shuttle(1));
-                    assert(volPlug > 0);
-                    assert(plug(1) > 0);
-                    assert(plug(2) > 0);
-                    rhoPlug = plug(1) /  volPlug;
-                    TPlug = plug(2) / plug(1) / physConst.c_v;
-                    pPlug = rhoPlug * Q_ * TPlug;                           % TODO: output and complete
-                    
-%                     dShuttle = shuttleEvolve(shuttle, p_R, physConst);
-                    dShuttle = shuttleEvolve(shuttle, pPlug, physConst);
-                else
-                    dShuttle = 0*shuttle;
-                end
-                
-                % Check for overshoot at weakly enforced sonic BC
-%                 assert(~REVERT_MODEL || u_R < 500)
-                
                 %% Airgun PDE evolution
                 % Compute airgun state evolution with left BC
                 dq = schm.D(q) + closure_l(q);
@@ -473,7 +534,10 @@ classdef DiscrAirgunShuttleMulti < DiscrAirgun
                         if vel_a == 0
                             dq = dq + closure_r_closed(q);
                         elseif isSonicFlags(2) % Sonic at port: momentum BC
-                            dq = dq + closure_r_out_sub_vel(q, vel_a);
+                            if schm.flowStateR(q) ~= scheme.Euler1d.SUPERSONIC_OUTFLOW
+                                dq = dq + closure_r_out_sub_vel(q, vel_a); % TODO: CHECK IF IT'S REAL
+                            end
+%                             disp(vel_a)
                         else % Subsonic at port: pressure matching
 %                             warning('Unchecked subsonic port BC.')
                             dq = dq + closure_r_out_sub(q, pUpstream);

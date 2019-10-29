@@ -260,9 +260,9 @@ figure(1006); clf;
 
 subplot(1,2,1);
 subsonicStates =       monitorStates(:,monitorStates(3,:)==1);
-chamberLimitedStates = monitorStates(:,monitorStates(3,:)==2);
-shockStates =          monitorStates(:,monitorStates(3,:)==3);
-portLimitedStates =    monitorStates(:,monitorStates(3,:)==4);
+chamberLimitedStates = monitorStates(:,monitorStates(3,:)==3);
+shockStates =          monitorStates(:,monitorStates(3,:)==4);
+portLimitedStates =    monitorStates(:,monitorStates(3,:)==2);
 
 plot(subsonicStates(1,:), subsonicStates(2,:), 'b.'); hold on
 plot(chamberLimitedStates(1,:), chamberLimitedStates(2,:), 'g.');

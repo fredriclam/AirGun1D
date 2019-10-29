@@ -1,0 +1,9 @@
+*.fig
+*.png
+test*/
+*.asv
+crashdump.txt
+pPlug_session_10-15.mat
+longtube_pram.txt
+deprecate_portAveragingModel.m
+deprecate_portTransientCVModel.m
