@@ -16,20 +16,22 @@ R = 287;                      % [J / kg K]
 c = sqrt(gamma * R * T0);     % [m/s]
 rho0 = p0 / (R * T0);         % [kg/m^3]
 
-cushLength = 3.0 * 0.0254;      % [m]
-accelLength = 0.0 * 0.0254;     % [m]
-pRFactor = @(xi) (xi <= accelLength) * (1) + ...
-    (xi > accelLength) * ...
-    (cushLength / (cushLength - (xi - accelLength))) .^ gamma; % [-]
+cushLength = 3.0 * 0.0254;    % [m]
+accelLength = 0.0 * 0.0254;   % [m]
+pRFactor = @(xi) (xi <= accelLength) .* (1) + ...
+    (xi > accelLength) .* ...
+    (cushLength ./ (cushLength - (xi - accelLength))) .^ gamma; % [-]
 pR = @(xi) p0 * pRFactor(xi); % [Pa]
 
-A_L = 10* 16 * (0.0254^2);        % [m^2] -- from test_launch_script test case 1
+A_L = 10 * 16 * (0.0254^2);    % [m^2] -- from test_launch_script test case 1
 A_R = 0.0506/0.0586 * A_L;    % [m^2]
 
 L = c * pi / sqrt((A_R * p0 * gamma / cushLength)/m); % Resonant length [m]
 
-f0 = 190; % [Hz] from FFT, short chamber
-L = c / (2*f0);
+cushMass = p0 / (R * T0) * A_R * cushLength; % [kg]
+c_v = 1/(gamma-1)*R;                         % [J / kg K]
+energyDelta = @(xi) (pRFactor(xi).^((gamma-1)/gamma) - 1) * ...
+    cushMass * c_v * T0;
 
 %% Compute equilibrium position
 forceFactor = ((A_L * p0) / (A_R * p0))^(1/gamma);
@@ -39,77 +41,100 @@ xi_eq = (forceFactor-1)/forceFactor * cushLength;
 figure(1); clf;
 tFinal = 0.100;
 
-% Resonant length solve
-[tVector1, xVector1] = DDESolve(tFinal, true, true, ...
-    m, L, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L);
-% No-damp plot
-subplot(2,3,1);
-plot(tVector1, xVector1(1,:));
-title('L ~ L_{res}')
-xlabel('time [s]')
-ylabel('shuttle position [m]')
-% hold on;
+sweepFactorVector = [0.1, linspace(2/3,3/2,1), 10];
+collection = [];
+for i = 1:length(sweepFactorVector)
+    [tVector, xVector] = DDESolve(tFinal, true, true, ...
+        m, sweepFactorVector(i) * L, p0, T0, gamma, R, c, rho0, ...
+        cushLength, accelLength, pR, A_R, A_L);
+    collection(1).tVector = tVector;
+    collection(1).xVector = xVector;
+    
+    subplot(1,3,1);
+    plot(tVector, xVector(1,:));
+    if i == 1
+        hold on
+    end
+    title('L ~ L_{res}')
+    xlabel('time [s]')
+    ylabel('shuttle position [m]')
+    
+    subplot(1,3,2);
+    plot(tVector, energyDelta(xVector(1,:)) + ...
+        0.5*m*xVector(2,:).^2);
+    if i == 1
+        hold on
+    end
+    title ('Shuttle + cushion energy')
+    
+    
+    % hold on;
+    % subplot(2,3,2);
+    % plot(tVector1, xVector1(2,:));
+    % hold on;
+    % title('Velocity [m/s] vs. time [s]')
+    subplot(1,3,3);
+    dt = tVector(2)-tVector(1);
+    [f, X] = outil.spect(xVector(1,:), dt);
+    loglog(f, X);
+    if i == 1
+        hold on
+    end
+    drawnow;
+end
+
+% % L < Resonant length solve
+% [tVector2, xVector2] = DDESolve(tFinal, true, true, ...
+%     m, 0.1*L, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L);
+% % Primary rarefaction plot
 % subplot(2,3,2);
-% plot(tVector1, xVector1(2,:));
-% hold on;
-% title('Velocity [m/s] vs. time [s]')
-subplot(2,3,4);
-dt = tVector1(2)-tVector1(1);
-[f1, X1] = outil.spect(xVector1(1,:), dt);
-loglog(f1, X1);
-
-% L < Resonant length solve
-[tVector2, xVector2] = DDESolve(tFinal, true, true, ...
-    m, 0.1*L, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L);
-% Primary rarefaction plot
-subplot(2,3,2);
-plot(tVector2, xVector2(1,:));
-title('L ~ 0.1L_{res}')
-% subplot(1,2,2);
-% plot(tVector2, xVector2(2,:));
-subplot(2,3,5);
-dt = tVector2(2)-tVector2(1);
-[f2, X2] = outil.spect(xVector2(1,:), dt);
-loglog(f2, X2);
-
-% L > Resonant length solve
-[tVector3, xVector3] = DDESolve(tFinal, true, true, ...
-    m, L*10, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L);
-% Damped plot
-subplot(2,3,3);
-plot(tVector3, xVector3(1,:));
-title('L ~ 10L_{res}')
-% subplot(1,2,2);
-% plot(tVector3, xVector3(2,:));
-subplot(2,3,6);
-dt = tVector3(2)-tVector3(1);
-[f3, X3] = outil.spect(xVector3(1,:), dt);
-loglog(f3, X3);
-
-% % Guidelines
-% subplot(1,2,1);
-% % Equilibrium by force calulation
-% plot([0, tFinal], accelLength + xi_eq * [1, 1], 'k--');
-% % Shuttle round-trip times
-% yyy = ylim;
-% plot(0.005*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
-% plot(0.008*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
-% ylim(yyy);
+% plot(tVector2, xVector2(1,:));
+% title('L ~ 0.1L_{res}')
+% % subplot(1,2,2);
+% % plot(tVector2, xVector2(2,:));
+% subplot(2,3,5);
+% dt = tVector2(2)-tVector2(1);
+% [f2, X2] = outil.spect(xVector2(1,:), dt);
+% loglog(f2, X2);
 % 
-% subplot(1,2,2);
-% % Shuttle round-trip times
-% yyy = ylim;
-% plot(0.005*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
-% plot(0.008*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
-% ylim(yyy);
+% % L > Resonant length solve
+% [tVector3, xVector3] = DDESolve(tFinal, true, true, ...
+%     m, L*10, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L);
+% % Damped plot
+% subplot(2,3,3);
+% plot(tVector3, xVector3(1,:));
+% title('L ~ 10L_{res}')
+% % subplot(1,2,2);
+% % plot(tVector3, xVector3(2,:));
+% subplot(2,3,6);
+% dt = tVector3(2)-tVector3(1);
+% [f3, X3] = outil.spect(xVector3(1,:), dt);
+% loglog(f3, X3);
 % 
-% legend({'L_res', 'L_res/2', '2L_res'}, ...
-%     'Location', 'northeast')
+% % % Guidelines
+% % subplot(1,2,1);
+% % % Equilibrium by force calulation
+% % plot([0, tFinal], accelLength + xi_eq * [1, 1], 'k--');
+% % % Shuttle round-trip times
+% % yyy = ylim;
+% % plot(0.005*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
+% % plot(0.008*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
+% % ylim(yyy);
+% % 
+% % subplot(1,2,2);
+% % % Shuttle round-trip times
+% % yyy = ylim;
+% % plot(0.005*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
+% % plot(0.008*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
+% % ylim(yyy);
+% % 
+% % legend({'L_res', 'L_res/2', '2L_res'}, ...
+% %     'Location', 'northeast')
 
 %% Figure 2: frequency superposition
-figure(2);
-clf
-loglog(f1,X1); hold on; loglog(f2,X2); loglog(f3,X3);
+% figure(2);
+% clf
+% loglog(f1,X1); hold on; loglog(f2,X2); loglog(f3,X3);
 
 %% Function: DDE solve with fixed timestep
 function [tVector, xVector] = DDESolve(tFinal, globalDamp, lagDamp, ...

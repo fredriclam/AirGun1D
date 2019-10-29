@@ -8,7 +8,7 @@
 %% Params
 clear;
 m = 63 * .454;                % [kg]
-% L = 0.6;                      % [m]
+L = 0.6;                      % [m]
 p0 = 2000 * 0.068046e5;       % [Pa]
 T0 = 300;                     % [K]
 gamma = 1.4;                  % [-]
@@ -26,10 +26,7 @@ pR = @(xi) p0 * pRFactor(xi); % [Pa]
 A_L = 10* 16 * (0.0254^2);        % [m^2] -- from test_launch_script test case 1
 A_R = 0.0506/0.0586 * A_L;    % [m^2]
 
-L = c * pi / sqrt((A_R * p0 * gamma / cushLength)/m); % Resonant length [m]
-
-f0 = 190; % [Hz] from FFT, short chamber
-L = c / (2*f0);
+% L = c * pi / sqrt((A_R * p0 * gamma / cushLength)/m); % Resonant length [m]
 
 %% Compute equilibrium position
 forceFactor = ((A_L * p0) / (A_R * p0))^(1/gamma);
@@ -39,77 +36,56 @@ xi_eq = (forceFactor-1)/forceFactor * cushLength;
 figure(1); clf;
 tFinal = 0.100;
 
-% Resonant length solve
-[tVector1, xVector1] = DDESolve(tFinal, true, true, ...
+% % No-damp solve
+[tVector1, xVector1] = DDESolve(tFinal, false, false, ...
     m, L, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L);
 % No-damp plot
-subplot(2,3,1);
+subplot(1,2,1);
 plot(tVector1, xVector1(1,:));
-title('L ~ L_{res}')
-xlabel('time [s]')
-ylabel('shuttle position [m]')
-% hold on;
-% subplot(2,3,2);
-% plot(tVector1, xVector1(2,:));
-% hold on;
-% title('Velocity [m/s] vs. time [s]')
-subplot(2,3,4);
-dt = tVector1(2)-tVector1(1);
-[f1, X1] = outil.spect(xVector1(1,:), dt);
-loglog(f1, X1);
+title('Position [m] vs. time [s]')
+hold on;
+subplot(1,2,2);
+plot(tVector1, xVector1(2,:));
+hold on;
+title('Velocity [m/s] vs. time [s]')
 
-% L < Resonant length solve
-[tVector2, xVector2] = DDESolve(tFinal, true, true, ...
-    m, 0.1*L, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L);
+% Primary rarefaction solve
+[tVector2, xVector2] = DDESolve(tFinal, true, false, ...
+    m, L, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L);
 % Primary rarefaction plot
-subplot(2,3,2);
+subplot(1,2,1);
 plot(tVector2, xVector2(1,:));
-title('L ~ 0.1L_{res}')
-% subplot(1,2,2);
-% plot(tVector2, xVector2(2,:));
-subplot(2,3,5);
-dt = tVector2(2)-tVector2(1);
-[f2, X2] = outil.spect(xVector2(1,:), dt);
-loglog(f2, X2);
+subplot(1,2,2);
+plot(tVector2, xVector2(2,:));
 
-% L > Resonant length solve
+% Damped solve
 [tVector3, xVector3] = DDESolve(tFinal, true, true, ...
-    m, L*10, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L);
+    m, L, p0, T0, gamma, R, c, rho0, cushLength, accelLength, pR, A_R, A_L);
 % Damped plot
-subplot(2,3,3);
+subplot(1,2,1);
 plot(tVector3, xVector3(1,:));
-title('L ~ 10L_{res}')
-% subplot(1,2,2);
-% plot(tVector3, xVector3(2,:));
-subplot(2,3,6);
-dt = tVector3(2)-tVector3(1);
-[f3, X3] = outil.spect(xVector3(1,:), dt);
-loglog(f3, X3);
+subplot(1,2,2);
+plot(tVector3, xVector3(2,:));
 
-% % Guidelines
-% subplot(1,2,1);
-% % Equilibrium by force calulation
-% plot([0, tFinal], accelLength + xi_eq * [1, 1], 'k--');
-% % Shuttle round-trip times
-% yyy = ylim;
-% plot(0.005*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
-% plot(0.008*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
-% ylim(yyy);
-% 
-% subplot(1,2,2);
-% % Shuttle round-trip times
-% yyy = ylim;
-% plot(0.005*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
-% plot(0.008*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
-% ylim(yyy);
-% 
-% legend({'L_res', 'L_res/2', '2L_res'}, ...
-%     'Location', 'northeast')
+% Guidelines
+subplot(1,2,1);
+% Equilibrium by force calulation
+plot([0, tFinal], accelLength + xi_eq * [1, 1], 'k--');
+% Shuttle round-trip times
+yyy = ylim;
+plot(0.005*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
+plot(0.008*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
+ylim(yyy);
 
-%% Figure 2: frequency superposition
-figure(2);
-clf
-loglog(f1,X1); hold on; loglog(f2,X2); loglog(f3,X3);
+subplot(1,2,2);
+% Shuttle round-trip times
+yyy = ylim;
+plot(0.005*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
+plot(0.008*[1 1], [yyy(1)-1000, yyy(2)+1000], 'k--');
+ylim(yyy);
+
+legend({'No damp', 'Primary rarefaction', 'Both rarefactions'}, ...
+    'Location', 'northeast')
 
 %% Function: DDE solve with fixed timestep
 function [tVector, xVector] = DDESolve(tFinal, globalDamp, lagDamp, ...
