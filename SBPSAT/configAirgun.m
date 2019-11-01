@@ -203,6 +203,9 @@ switch str
         physConst.shuttle_area_right_rear = pi/4 * ( ...
             (11.1 * 0.0254)^2 - (2.1 * 0.0254)^2); % [m^2]
         
+        % Lead-in length where shuttle can move without exposing the air
+        physConst.portLead = 0.35 * 0.0254; % [m]
+        
         physConst.flangeDepth = 3 * 0.0254; % [m]
         % Approximate the flage ID to be equal to the chamber
         physConst.plugVolumeFn = @(xi) ...

@@ -19,7 +19,7 @@ function [sol, q1, bubble1, shuttle1, plug1, ...
     % Grab initial states for each subsystem (same for both systems)
     q0 = dRevert.q0;
     bubble0 = dRevert.bubble0;
-    shuttle0 = dRevert.shuttle0;
+    shuttle0 = dNew.shuttle0;
     plug0 = dNew.plug0;
     % Grab ODE's RHS (different)
     RHSRevert = dRevert.RHS;
@@ -120,6 +120,50 @@ function [sol, q1, bubble1, shuttle1, plug1, ...
             plot(dNew.schm.x(2:3:end), p2);
             
             drawnow;
+            
+            figure(98);
+            m_rear = shuttle2(3);
+            E_rear = shuttle2(4);
+            m_front = shuttle2(5);
+            E_front = shuttle2(6);
+            
+            % compute pressure
+            % Compute mass flow rates based on choked or OFF # TODO: implement
+% sub-choked flow rates
+V_rear = dNew.physConst.shuttle_area_right * shuttle2(1) + 1e-10; % A quick approximation
+% Constrained density
+rho_rear = m_rear / V_rear;
+% Constrained temperature
+T_rear = E_rear / (m_rear * dNew.physConst.c_v);
+% Pressure
+p_rear = rho_rear * dNew.physConst.Q * T_rear;
+
+V_front_max = dNew.physConst.shuttle_area_right * dNew.physConst.operatingChamberLength;
+
+% Compute mass flow rates based on choked or OFF # TODO: implement
+% sub-choked flow rates
+V_front = V_front_max - V_rear; % A quick approximation
+% Constrained density
+rho_front = m_front / V_front;
+% Constrained temperature
+T_front = E_front / (m_front * dNew.physConst.c_v);
+% Pressure
+p_front = rho_front * dNew.physConst.Q * T_front;
+            
+            subplot(2,2,1)
+            bar([m_rear, m_front])
+            title 'm'
+            subplot(2,2,2)
+            bar([E_rear, E_front])
+            title 'E'
+            subplot(2,2,3)
+            bar([p_rear, p_front])
+            title 'p'
+            subplot(2,2,4)
+            bar([T_rear, T_front]) 
+            title 'T'
+            drawnow;
+            
             lastPlot = t;
         end
     end

@@ -28,12 +28,32 @@ nx = 100;       % Number of grid points per 1 m of air gun length
 % bubbleInitialVolume = 600; % [cui]
 % shuttleBdryPenaltyStrength = 1e11; % [N/m]
 
-% % New set for data matching -- ballpark numbers
+% % % New set for data matching -- ballpark numbers; most test sets #[1, 40]
+% r = 3;                                            % Distance from source to receiver [m]
+% c_inf = 1482;                                     % Speed of sound in water [m/s]
+% rho_inf = 1000;                                   % Density of water [kg/m^3]
+% airgunPressure = 1000;                            % [psi]
+% airgunLength = 20800 / (pi*10.020^2/4) * 0.0254;  % [m] For 20800 cui
+% airgunPortArea = 2.5 * 0.50 * pi * 11;            % [in^2] % OD; covers 0.5 of cyl
+% airgunCrossSecArea = pi*10.020^2/4;               % [in^2]
+% airgunDepth = 7.5;                                % [m]
+% bubbleInitialVolume = 600; % [cui]
+% shuttleBdryPenaltyStrength = 1e11; % [N/m]
+% % Compression factor as function of shuttle position
+% airgunFiringChamberProfile = @(a) error('Placeholder; not implemented');
+% accelerationLength = (3.009-0.542)*0.0254; % [m]
+% airCushionLength = 0.542*0.0254;           % [m]
+% % Compression factor as function of shuttle position
+% airgunOperatingChamberProfile = @(xi) (xi - accelerationLength < 0) * 1 ...
+%     + (xi - accelerationLength > 0) * ...
+%     (airCushionLength / (airCushionLength - (xi - accelerationLength)));
+
+% % New set for data matching -- ballpark numbers; most test sets #[41,
 r = 3;                                            % Distance from source to receiver [m]
 c_inf = 1482;                                     % Speed of sound in water [m/s]
 rho_inf = 1000;                                   % Density of water [kg/m^3]
 airgunPressure = 1000;                            % [psi]
-airgunLength = 20800 / (pi*10.020^2/4) * 0.0254;  % [m] For 20800 cui
+airgunLength = 2000 / (pi*10.020^2/4) * 0.0254;   % [m] For ~0.6 m *****
 airgunPortArea = 2.5 * 0.50 * pi * 11;            % [in^2] % OD; covers 0.5 of cyl
 airgunCrossSecArea = pi*10.020^2/4;               % [in^2]
 airgunDepth = 7.5;                                % [m]
