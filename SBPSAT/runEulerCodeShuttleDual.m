@@ -168,14 +168,19 @@ p_front = rho_front * dNew.physConst.Q * T_front;
         end
     end
 
-    y0 = [q0; bubble0; shuttle0; plug0; q0; bubble0; shuttle0; plug0];
+    % HACK: Override bubble volume
+    bubble0revert = bubble0;
+    y0 = [q0; bubble0; shuttle0; plug0; q0; bubble0revert; shuttle0; plug0];
     
     tspan = [0; 0.010]; % Simulation tmin to tmax (used for set-test)
     tspan = [0; 0.030]; % Simulation tmin to tmax (used for set-test)
+%     tspan = [0; 0.100]; % Simulation tmin to tmax (used for set-test)
+%     tspan = [0; 0.400]; % Simulation tmin to tmax (used for set-test)
+
 %     tspan = [0; 0.250]; % Simulation tmin to tmax (specify here)
 %     tspan = [0; 2]; % Simulation tmin to tmax (specify here)
 %     options = odeset('RelTol',1e-6);
-    options = odeset('RelTol',1e-6, 'MaxStep', 1e-4);
+    options = odeset('RelTol',1e-3);%, 'MaxStep', 1e-3);
     
     sol = ode45(@odefun, tspan, y0,options);
 
@@ -184,7 +189,7 @@ p_front = rho_front * dNew.physConst.Q * T_front;
 % %     %sol.x = 0:k:tspan(2);
 % %         
 % %     %sol.q = q;
-    
+
     ind1 = 1;
     ind2 = length(q0);
     q1 = sol.y(ind1:ind2, :);
@@ -216,6 +221,8 @@ p_front = rho_front * dNew.physConst.Q * T_front;
     ind1 = ind2+1;
     ind2 = ind1+length(plug0)-1;
     plug2 = sol.y(ind1:ind2, :);
+    
+    
     
 %     assert(ind2 == length(y0));
 %     shuttle = [];
