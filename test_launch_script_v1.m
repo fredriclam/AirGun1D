@@ -70,15 +70,17 @@ nx = 100;       % Number of grid points per 1 m of air gun length
 %     (airCushionLength / (airCushionLength - (xi - accelerationLength)));
 
 % % % New set for data matching -- ballpark numbers; most test sets #[62,
-r = 75;                                            % Distance from source to receiver [m]
+r = 10;                                            % Distance from source to receiver [m]
 c_inf = 1482;                                     % Speed of sound in water [m/s]
 rho_inf = 1000;                                   % Density of water [kg/m^3]
-airgunPressure = 2000;                            % [psi]
-airgunLength = 2000 / (pi*10.020^2/4) * 0.0254;   % [m] For ~0.6 m *****
-% airgunLength = 20800 / (pi*10.020^2/4) * 0.0254;   % [m] For ~0.6 m *****
-airgunPortArea = 72; 2.5 * 0.50 * pi * 11;            % [in^2] % OD; covers 0.5 of cyl
-airgunCrossSecArea = 16; pi*10.020^2/4;               % [in^2]
-airgunDepth = 7.5;                                % [m]
+airgunPressure = 1000;                            % [psi]
+% airgunLength = 2000 / (pi*10.020^2/4) * 0.0254;   % [m] For ~0.6 m *****
+airgunLength = 20600 / (pi*10.020^2/4) * 0.0254;   % [m] For ~0.6 m *****
+% airgunPortArea = 10 * 2.5 * 0.50 * pi * 11;            % [in^2] % OD;
+% covers 0.5 of cyl, extra factor of 10
+airgunPortArea = 0.5 * 2.5 * pi * 11.2;            % [in^2] % OD; covers some % of cyl
+airgunCrossSecArea = pi*10.020^2/4;               % [in^2]
+airgunDepth = 10;                                % [m]
 bubbleInitialVolume = 600; % [cui]
 shuttleBdryPenaltyStrength = 1e11; % [N/m]
 % Compression factor as function of shuttle position
@@ -149,16 +151,16 @@ colormap bone;
 
 %% Plot 2: pressure
 figure(1002); clf;
-tmax = 30;
+tmax = 100;
 
-subplot(1,3,1);
+subplot(2,2,1);
 p = (gamma-1)*( q(3:3:end,:)-1/2*q(2:3:end,:).^2./q(1:3:end,:) );
 xAxis = linspace(0,1.2,size(p, 1))';
 tAxis = 1000*sol.x;
 [xx, tt] = meshgrid(xAxis, tAxis);
 contourf(xx, tt, p', 'LineStyle', 'none');
 
-subplot(1,3,2);
+subplot(2,2,2);
 p2 = (gamma-1)*( q2(3:3:end,:)-1/2*q2(2:3:end,:).^2./q2(1:3:end,:) );
 xAxis = linspace(0,1.2,size(p2, 1))';
 tAxis = 1000*sol.x;
@@ -166,10 +168,19 @@ tAxis = 1000*sol.x;
 contourf(xx, tt, p2', 'LineStyle', 'none', 'LevelStep', 0.1e6);
 
 hold on;
-plot(shuttle2(1,:)+1, tAxis, 'g');
-
+aestheticOffSet = 1.2;
+subsonicRange = monitorStates(3,:) == 1;
+portChokedRange = monitorStates(3,:) == 2;
+chamberChokedRange = monitorStates(3,:) == 3;
+plot(monitorStates(17,subsonicRange) + aestheticOffSet, ...
+     1000*monitorStates(13,subsonicRange), 'b.');
+plot(monitorStates(17,portChokedRange) + aestheticOffSet, ...
+     1000*monitorStates(13,portChokedRange), 'r.');
+plot(monitorStates(17,chamberChokedRange) + aestheticOffSet, ...
+     1000*monitorStates(13,chamberChokedRange), 'g.');
+ 
 for i = 1:2
-    subplot(1,3,i);
+    subplot(2,2,i);
     title('p [Pa]');
     ylim([0, tmax]);
     caxis([0, 14e6]);
@@ -180,10 +191,23 @@ end
 
 windowPos = get(gcf,'position');
 set(gcf,'position',[windowPos(1), windowPos(2), ...
-    1080, 350]);
+    800, 640]);
 colormap bone;
 
-subplot(1,3,3);
+subplot(2,2,3);
+plot(monitorStates(3,subsonicRange), 1e3*monitorStates(13,subsonicRange), ...
+    'b.', 'LineWidth', 1);
+hold on
+plot(monitorStates(3,portChokedRange), 1e3*monitorStates(13,portChokedRange), ...
+    'r.', 'LineWidth', 1);
+plot(monitorStates(3,chamberChokedRange), 1e3*monitorStates(13,chamberChokedRange), ...
+    'g.', 'LineWidth', 1);
+ylim([0, tmax]);
+set(gca, 'XTick', 1:3, 'XTickLabel', {'Subsonic','Port-choked','Chamber-choked'})
+set(gca, 'XTickLabel')
+ylabel('Time [ms]');
+
+subplot(2,2,4);
 plot(shuttle2(1,:), tAxis, 'k', 'LineWidth', 1);
 xlabel('Shuttle position [m]');
 ylabel('Time [ms]');
@@ -272,7 +296,7 @@ for i = 1:2
 %     caxis([0, 14e6]);
     xlabel('Time [ms]');
     ylabel('T [K]');
-    xlim([0, 80]);
+    xlim([0, 300]);
     ylim([120, 300]);
 end
 
@@ -286,10 +310,10 @@ subplot(1,3,3);
 try
     load ../../LinuxShare/HiTest_Data/HiTestData_v1.mat;
     T_exper_K = 5/9*(HiTestData(24).iNetCh1Data - 32) + 273.15;
-    plot(1000*(HiTestData(24).iNetTimeAxisT(3710:3790) - ...
-        HiTestData(24).iNetTimeAxisT(3710)), ...
-        T_exper_K(3710:3790)); % [K] vs [s]
-    xlim([0, 80]);
+    plot(1000*(HiTestData(24).iNetTimeAxisT(3720:4020) - ...
+    HiTestData(24).iNetTimeAxisT(3720)), ...
+    T_exper_K(3720:4020)); % [K] vs [s]
+    xlim([0, 300]);
     ylim([120, 300]);
 catch
     disp('Failed to locate data. Ignoring exp. data plot')
@@ -308,26 +332,32 @@ portLimitedStates =    monitorStates(:,monitorStates(3,:)==2);
 plot(subsonicStates(8,:), subsonicStates(1,:), 'b.'); hold on
 plot(chamberLimitedStates(8,:), chamberLimitedStates(1,:), 'g.');
 plot(portLimitedStates(8,:), portLimitedStates(1,:), 'r.');
+plot(monitorStates(8,:),monitorStates(1,:),'-');
+ylim([0, 2]);
 
 xlabel('$A_\mathrm{p} / A_\mathrm{cs}$', 'Interpreter', 'latex', 'FontSize', 14)
 ylabel('$M_\mathrm{a}$', 'Interpreter', 'latex', 'FontSize', 14)
 yL = ylim;
 ylim([0, yL(2)]);
 set(gca, 'FontSize', 14, 'TickLabelInterpreter', 'latex');
+title ('Chamber exit Mach number', ...
+    'Interpreter', 'latex', 'FontSize', 12)
 
 subplot(1,2,2);
-plot(subsonicStates(8,:), subsonicStates(7,:), 'b.'); hold on
-plot(chamberLimitedStates(8,:), chamberLimitedStates(7,:), 'g.');
-plot(portLimitedStates(8,:), portLimitedStates(7,:), 'r.');
-plot(monitorStates(8,:),monitorStates(7,:),'-');
+plot(subsonicStates(8,:), subsonicStates(11,:), 'b.'); hold on
+plot(chamberLimitedStates(8,:), chamberLimitedStates(11,:), 'g.');
+plot(portLimitedStates(8,:), portLimitedStates(11,:), 'r.');
+plot(monitorStates(8,:),monitorStates(11,:),'-');
 
 xlabel('$A_\mathrm{p} / A_\mathrm{cs}$', 'Interpreter', 'latex', 'FontSize', 14)
-ylabel('$p_\mathrm{t} / p^* $', 'Interpreter', 'latex', 'FontSize', 14)
+ylabel('$p^* / p_\mathrm{bubble} $', 'Interpreter', 'latex', 'FontSize', 14)
 yL = ylim;
 ylim([0, yL(2)]);
 set(gca, 'FontSize', 14, 'TickLabelInterpreter', 'latex');
 set(gca,'YScale','log')
-ylim([1, 1e3])
+ylim([1e-1, 1e3])
+title ('Sonic pressure (based on $p_0$) to bubble pressure', ...
+    'Interpreter', 'latex', 'FontSize', 12)
 
 % %% Plot bubble radius
 % figure(1); clf;
@@ -500,6 +530,34 @@ if false
     T =((q(3:3:end,:) - 0.5 * rho .* u.^2)/c_v);
     T2 =((q2(3:3:end,:) - 0.5 * q2(1:3:end,:) .* u2.^2)/c_v);
 end
+
+%% Pressure monitoring
+figure(1007); clf;
+
+yMax = 10*airgunPressure * 6894.76;
+
+% Plot areas with positive velocity
+area(monitorStates(13,:), yMax*(monitorStates(6,:) > 0), ...
+    'FaceColor', [0 0.4 0], 'FaceAlpha', 0.3, 'LineStyle', 'none')
+hold on;
+plot(monitorStates(13,:), monitorStates(10,:))
+plot(monitorStates(13,:), monitorStates(15,:))
+plot(monitorStates(13,:), monitorStates(16,:))
+legend({'velocity ->', 'pFiring ->', 'pRear ->', 'pFront <-'})
+xlabel 't [s]'
+ylabel('Pressure [Pa]')
+ylim([0 yMax]);
+hold off
+
+
+% subplot(3,1,2)
+% plot(monitorStates(13,:), monitorStates(5,:))
+% xlabel 't [s]'
+% ylabel 'uPort [m/s]'
+% subplot(3,1,3)
+% plot(monitorStates(13,:), monitorStates(3,:), '.')
+% xlabel 't [s]'
+% ylabel 'State (#)'
 
 
 %% Console report
